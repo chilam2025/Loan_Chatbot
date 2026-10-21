@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Raw application data may contain sensitive applicant information.
+training_data.csv
+data/raw/
+
+# Generated analysis artifacts can be recreated with `uv run phase-a`.
+reports/generated/
+
+# Local secrets and editor files.
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+
