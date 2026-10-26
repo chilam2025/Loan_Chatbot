@@ -62,6 +62,7 @@ def test_normalization_separates_unlabelled_rows_and_coerces_numeric_values() ->
     assert prepared.labelled.iloc[0]["Qualifications"] == "GRAD"
     assert prepared.labelled.iloc[0]["Age"] == 32
     assert pd.isna(prepared.unlabelled.iloc[0]["Age"])
+    assert prepared.labelled["Age"].dtype == "float64"
 
 
 def test_schema_validation_reports_missing_and_unexpected_columns() -> None:

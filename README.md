@@ -13,6 +13,7 @@ The raw CSV is deliberately excluded from Git because it may contain applicant i
 ```powershell
 uv sync --project backend --extra dev
 uv run --project backend phase-a
+uv run --project backend prepare-data
 uv run --project backend pytest backend/tests
 ```
 
@@ -44,5 +45,9 @@ in `docs/`, while generated analysis stays in `reports/generated/`.
 
 ## Next phases
 
-Phase B will establish leakage-safe train/validation splits, an interpretable logistic-regression baseline, a tree-based comparison model, probability calibration and business-informed threshold selection. Phase C will add the chatbot and deterministic model integration.
+Phase B now includes leakage-safe stratified train/validation/test splitting,
+training-only missing-value imputation, and unknown-safe categorical encoding. The
+next modelling work will add an interpretable logistic-regression baseline, a
+tree-based comparison model, probability calibration, and business-informed
+threshold selection. Phase C will add the chatbot and deterministic model integration.
 

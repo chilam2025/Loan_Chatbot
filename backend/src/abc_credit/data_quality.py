@@ -102,7 +102,10 @@ def normalize_for_analysis(frame: pd.DataFrame) -> PreparedData:
 
     normalized["Decision"] = normalized["Decision"].str.upper()
     for column in NUMERIC_COLUMNS:
-        normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
+        # scikit-learn's numeric transformers expect NumPy NaN rather than pd.NA.
+        normalized[column] = pd.to_numeric(normalized[column], errors="coerce").astype(
+            "float64"
+        )
 
     target_is_valid = normalized["Decision"].isin(VALID_DECISIONS)
     labelled = normalized.loc[target_is_valid].copy()
