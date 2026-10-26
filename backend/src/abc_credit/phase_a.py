@@ -155,7 +155,7 @@ def run(input_path: Path, output_dir: Path) -> dict:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("training_data.csv"))
+    parser.add_argument("--input", type=Path, default=Path("data/raw/training_data.csv"))
     parser.add_argument("--output", type=Path, default=Path("reports/generated"))
     return parser.parse_args()
 

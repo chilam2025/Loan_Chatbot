@@ -62,7 +62,7 @@ def load_raw_data(path: str | Path) -> pd.DataFrame:
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(
-            f"Dataset not found at {source}. Place training_data.csv in the repository root "
+            f"Dataset not found at {source}. Place it at data/raw/training_data.csv "
             "or pass --input with its location."
         )
     frame = pd.read_csv(source, dtype="string", keep_default_na=True)

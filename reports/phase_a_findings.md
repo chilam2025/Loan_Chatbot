@@ -36,5 +36,6 @@ The dataset has low overall missingness but contains meaningful quality and poli
 
 Use a stratified split and keep a final internal validation set untouched during model selection. Establish an all-approved reference, then compare logistic regression with a tree-based model using the same leakage-safe pipeline. Report class-specific metrics and probability-quality diagnostics, and choose the operating threshold from explicit business costs rather than maximizing accuracy.
 
-The generated summary, tables and plots can be reproduced with `uv run phase-a`.
+The generated summary, tables and plots can be reproduced from the repository root
+with `uv run --project backend phase-a`.
 

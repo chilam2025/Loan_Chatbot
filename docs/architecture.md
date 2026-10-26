@@ -1,5 +1,21 @@
 # System Architecture and Workstreams
 
+## Repository boundaries
+
+```text
+Loan_Chatbot/
+|-- backend/       Python domain logic, predictive pipeline, API, and tests
+|-- frontend/      Browser chat experience and client-side tests
+|-- data/raw/      Local sensitive inputs; never committed
+|-- docs/          Shared architecture and API contracts
+`-- reports/       Reviewed findings and reproducible generated artifacts
+```
+
+Frontend code must call the backend through a documented API contract rather than
+importing model or preprocessing internals. The backend owns validation, feature
+construction, inference, decision thresholds, and privacy-safe audit events. The
+frontend owns conversation presentation, accessibility, and user input capture.
+
 ## Component boundary
 
 The predictive and generative responsibilities remain deliberately separate:

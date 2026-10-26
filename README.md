@@ -8,12 +8,12 @@ Phase A is implemented as a reproducible exploratory data analysis and data-qual
 
 ## Quick start
 
-The raw CSV is deliberately excluded from Git because it may contain applicant information. Place `training_data.csv` in the repository root (as supplied), then run:
+The raw CSV is deliberately excluded from Git because it may contain applicant information. Place it at `data/raw/training_data.csv`, then run from the repository root:
 
 ```powershell
-uv sync --extra dev
-uv run phase-a
-uv run pytest
+uv sync --project backend --extra dev
+uv run --project backend phase-a
+uv run --project backend pytest backend/tests
 ```
 
 Generated artifacts are written to `reports/generated/`. The main conclusions and proposed preprocessing decisions are in `reports/phase_a_findings.md`.
@@ -21,12 +21,17 @@ Generated artifacts are written to `reports/generated/`. The main conclusions an
 ## Repository layout
 
 ```text
-src/abc_credit/        Reusable data validation and Phase A analysis code
-tests/                 Automated tests for validation and normalization
-reports/               Phase A findings and generated analysis artifacts
-docs/                  Architecture and team working agreements
-training_data.csv      Local raw data (ignored by Git)
+backend/               Python services, data pipeline, and backend tests
+frontend/              Chat client boundary and frontend implementation guide
+data/raw/              Local sensitive source data (ignored by Git)
+reports/               Findings and reproducible generated analysis artifacts
+docs/                  Cross-cutting architecture and working agreements
 ```
+
+The repository is organized as a monorepo. Backend dependencies stay isolated in
+`backend/pyproject.toml`; the frontend can adopt its own toolchain without mixing
+Python and JavaScript build files. Shared product contracts and architecture belong
+in `docs/`, while generated analysis stays in `reports/generated/`.
 
 ## Design guardrails
 

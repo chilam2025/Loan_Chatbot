@@ -9,8 +9,15 @@ __pycache__/
 training_data.csv
 data/raw/
 
-# Generated analysis artifacts can be recreated with `uv run phase-a`.
+# Generated analysis artifacts can be recreated with
+# `uv run --project backend phase-a`.
 reports/generated/
+
+# Frontend dependencies and build output.
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+frontend/coverage/
 
 # Local secrets and editor files.
 .env
