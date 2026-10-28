@@ -17,6 +17,7 @@ Run commands from the repository root:
 uv sync --project backend --extra dev
 uv run --project backend phase-a
 uv run --project backend prepare-data
+uv run --project backend uvicorn abc_credit.api.main:app --reload
 uv run --project backend pytest backend/tests
 uv run --project backend ruff check backend
 ```
@@ -30,3 +31,6 @@ median and most-frequent imputers on the training partition only, and applies a
 bounded one-hot encoder that groups rare values and tolerates categories not observed
 during training. It writes a privacy-safe preparation summary without exporting
 applicant-level split files.
+
+The API is served under `/api/v1`; interactive OpenAPI documentation is available
+at `/docs` while the server is running.
