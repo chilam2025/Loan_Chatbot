@@ -67,6 +67,12 @@ class ApplicationService:
             create_test_session_factory()
         )
 
+    @property
+    def repository(self) -> SQLAlchemyApplicationRepository:
+        """Expose the shared persistence boundary to adjacent domain services."""
+
+        return self._repository
+
     @classmethod
     def from_database_url(cls, database_url: str) -> "ApplicationService":
         """Build the production service without implicitly changing its schema."""

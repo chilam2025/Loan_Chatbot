@@ -30,6 +30,12 @@ class SQLAlchemyApplicationRepository:
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
+    @property
+    def session_factory(self) -> SessionFactory:
+        """Share the configured database with adjacent domain repositories."""
+
+        return self._session_factory
+
     def create(self, locale: SupportedLocale) -> ApplicationModel:
         timestamp = datetime.now(UTC)
         application = ApplicationModel(
