@@ -88,18 +88,41 @@ False or missing consent returns `422 Unprocessable Entity`.
 
 Returns non-sensitive application metadata. Unknown identifiers return `404 Not Found`.
 
-## Planned endpoints
-
-These paths are reserved by the contract but are not part of the initial slice.
-
 ### `GET /api/v1/applications/{application_id}/next-question`
 
 Returns the next deterministic question based on application state and existing answers.
+The prompt and choice labels use the locale selected when the application was created.
+When all required answers have been saved, `question` is `null` and `next_action` is
+`verify_identity`.
 
 ### `PATCH /api/v1/applications/{application_id}/answers`
 
-Validates and saves one or more applicant answers. It must never accept a decision,
-probability, threshold, model version, or application status from the client.
+Validates and atomically saves one or more applicant answers. It never accepts a
+decision, probability, threshold, model version, or application status from the client.
+Answer values are not echoed in the response.
+
+Request:
+
+```json
+{
+  "answers": [
+    {"question_id": "age", "value": 30},
+    {"question_id": "qualifications", "value": "GRAD"}
+  ]
+}
+```
+
+The supported applicant question identifiers are `age`, `qualifications`,
+`employment_type`, `pincode`, `gender`, `resident_type`, `net_salary`, `loan_amount`,
+and `past_loans_active`.
+
+The first accepted answer changes the application to `COLLECTING_INFORMATION`. Once
+all required answers are present, it changes to `AWAITING_VERIFICATION`. Answers cannot
+be changed after that transition.
+
+## Planned endpoints
+
+These paths are reserved by the contract but are not part of the questionnaire slice.
 
 ### `POST /api/v1/applications/{application_id}/verify`
 
