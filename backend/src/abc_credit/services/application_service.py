@@ -1,10 +1,20 @@
-"""Application lifecycle service with replaceable persistence."""
+"""Application lifecycle service backed by a replaceable repository."""
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from threading import RLock
-from uuid import UUID, uuid4
+from uuid import UUID
 
+from abc_credit.db.models import ApplicationModel
+from abc_credit.db.repository import (
+    RepositoryNotFoundError,
+    RepositoryStateConflictError,
+    SQLAlchemyApplicationRepository,
+)
+from abc_credit.db.session import (
+    build_session_factory,
+    create_database_engine,
+    create_test_session_factory,
+)
 from abc_credit.schemas.applications import ApplicationStatus, SupportedLocale
 from abc_credit.schemas.questionnaire import AnswerInput, AnswerValue, QuestionId, QuestionResponse
 from abc_credit.services.questionnaire import (
@@ -25,7 +35,7 @@ class ApplicationStateError(ValueError):
 
 @dataclass(frozen=True)
 class ApplicationRecord:
-    """Non-sensitive application metadata stored by the initial service."""
+    """Persistence-independent application representation."""
 
     application_id: UUID
     status: ApplicationStatus
@@ -47,66 +57,60 @@ class QuestionnaireProgress:
 
 
 class ApplicationService:
-    """Create and retrieve application state using an in-memory repository.
+    """Apply application rules while delegating persistence to a repository."""
 
-    Persistence will be replaced behind this service boundary in a later milestone.
-    """
+    def __init__(
+        self,
+        repository: SQLAlchemyApplicationRepository | None = None,
+    ) -> None:
+        self._repository = repository or SQLAlchemyApplicationRepository(
+            create_test_session_factory()
+        )
 
-    def __init__(self) -> None:
-        self._applications: dict[UUID, ApplicationRecord] = {}
-        self._lock = RLock()
+    @classmethod
+    def from_database_url(cls, database_url: str) -> "ApplicationService":
+        """Build the production service without implicitly changing its schema."""
+
+        engine = create_database_engine(database_url)
+        repository = SQLAlchemyApplicationRepository(build_session_factory(engine))
+        return cls(repository)
 
     def create(self, *, locale: SupportedLocale) -> ApplicationRecord:
         """Create a new application with a server-generated identifier."""
 
-        timestamp = datetime.now(UTC)
-        record = ApplicationRecord(
-            application_id=uuid4(),
-            status=ApplicationStatus.STARTED,
-            locale=locale,
-            created_at=timestamp,
-            updated_at=timestamp,
-            next_action="answer_questions",
-        )
-        with self._lock:
-            self._applications[record.application_id] = record
-        return record
+        return self._to_record(self._repository.create(locale))
 
     def get(self, application_id: UUID) -> ApplicationRecord:
         """Retrieve an application or raise an explicit domain error."""
 
-        with self._lock:
-            record = self._applications.get(application_id)
-        if record is None:
-            raise ApplicationNotFoundError(str(application_id))
-        return record
+        try:
+            return self._to_record(self._repository.get(application_id))
+        except RepositoryNotFoundError as error:
+            raise ApplicationNotFoundError(str(application_id)) from error
 
     def questionnaire_progress(self, application_id: UUID) -> QuestionnaireProgress:
         """Return the first unanswered question in the application's locale."""
 
-        with self._lock:
-            record = self._applications.get(application_id)
-            if record is None:
-                raise ApplicationNotFoundError(str(application_id))
-            next_definition = next(
-                (
-                    question
-                    for question in QUESTIONNAIRE
-                    if question.question_id not in record.answers
-                ),
-                None,
-            )
-            question = (
-                localize_question(next_definition, record.locale)
-                if next_definition is not None
-                else None
-            )
-            return QuestionnaireProgress(
-                application=record,
-                answered_questions=len(record.answers),
-                total_questions=len(QUESTIONNAIRE),
-                question=question,
-            )
+        record = self.get(application_id)
+        next_definition = next(
+            (
+                question
+                for question in QUESTIONNAIRE
+                if question.question_id not in record.answers
+            ),
+            None,
+        )
+        question = (
+            localize_question(next_definition, record.locale)
+            if next_definition is not None
+            else None
+        )
+        return QuestionnaireProgress(
+            application=record,
+            answered_questions=len(record.answers),
+            total_questions=len(QUESTIONNAIRE),
+            question=question,
+        )
 
     def save_answers(
         self,
@@ -115,38 +119,54 @@ class ApplicationService:
     ) -> QuestionnaireProgress:
         """Validate and atomically save answers, then return updated progress."""
 
-        with self._lock:
-            record = self._applications.get(application_id)
-            if record is None:
-                raise ApplicationNotFoundError(str(application_id))
-            if record.status not in {
-                ApplicationStatus.STARTED,
-                ApplicationStatus.COLLECTING_INFORMATION,
-            }:
-                raise ApplicationStateError(
-                    f"Answers cannot be changed while application is {record.status.value}"
-                )
-
-            question_ids = [answer.question_id for answer in answers]
-            if len(question_ids) != len(set(question_ids)):
-                raise InvalidAnswerError("Each question may appear only once per request")
-            validated = {
-                answer.question_id: validate_answer(answer.question_id, answer.value)
-                for answer in answers
-            }
-            merged_answers = {**record.answers, **validated}
-            complete = len(merged_answers) == len(QUESTIONNAIRE)
-            updated = replace(
-                record,
-                status=(
-                    ApplicationStatus.AWAITING_VERIFICATION
-                    if complete
-                    else ApplicationStatus.COLLECTING_INFORMATION
-                ),
-                updated_at=datetime.now(UTC),
-                next_action="verify_identity" if complete else "answer_questions",
-                answers=merged_answers,
+        existing = self.get(application_id)
+        if existing.status not in {
+            ApplicationStatus.STARTED,
+            ApplicationStatus.COLLECTING_INFORMATION,
+        }:
+            raise ApplicationStateError(
+                f"Answers cannot be changed while application is {existing.status.value}"
             )
-            self._applications[application_id] = updated
-
+        question_ids = [answer.question_id for answer in answers]
+        if len(question_ids) != len(set(question_ids)):
+            raise InvalidAnswerError("Each question may appear only once per request")
+        validated = {
+            answer.question_id: validate_answer(answer.question_id, answer.value)
+            for answer in answers
+        }
+        try:
+            self._repository.save_answers(
+                application_id,
+                validated,
+                total_questions=len(QUESTIONNAIRE),
+            )
+        except RepositoryNotFoundError as error:
+            raise ApplicationNotFoundError(str(application_id)) from error
+        except RepositoryStateConflictError as error:
+            raise ApplicationStateError(
+                "Answers cannot be changed while application is "
+                f"{error.application_status}"
+            ) from error
         return self.questionnaire_progress(application_id)
+
+    @staticmethod
+    def _to_record(application: ApplicationModel) -> ApplicationRecord:
+        return ApplicationRecord(
+            application_id=UUID(application.id),
+            status=ApplicationStatus(application.status),
+            locale=application.locale,  # type: ignore[arg-type]
+            created_at=_ensure_utc(application.created_at),
+            updated_at=_ensure_utc(application.updated_at),
+            next_action=application.next_action,
+            answers={
+                QuestionId(answer.question_id): answer.value for answer in application.answers
+            },
+        )
+
+
+def _ensure_utc(value: datetime) -> datetime:
+    """Normalize SQLite's timezone-naive values to the API's UTC contract."""
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

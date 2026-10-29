@@ -7,9 +7,10 @@ Credit backend. The backend owns application state, deterministic validation, mo
 inference, verification status, and audit events. The frontend owns presentation and
 must not reproduce decision logic.
 
-The initial implementation uses an in-memory application service. Persistent storage,
-answer collection, verification, and model inference are added behind the same service
-boundary in later milestones.
+The implementation stores application metadata, validated answers, and audit events in
+separate relational tables behind a repository boundary. SQLite supports local
+development and PostgreSQL is configured through `ABC_DATABASE_URL`. Verification and
+model inference are added behind the service boundary in later milestones.
 
 ## Conventions
 

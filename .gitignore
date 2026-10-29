@@ -13,6 +13,10 @@ data/raw/
 # `uv run --project backend phase-a`.
 reports/generated/
 
+# Local application databases are runtime state and may contain applicant data.
+backend/data/*.db
+backend/data/*.db-*
+
 # Frontend dependencies and build output.
 frontend/node_modules/
 frontend/dist/

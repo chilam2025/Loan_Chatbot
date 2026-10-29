@@ -184,6 +184,15 @@ def test_unknown_application_returns_not_found_for_questionnaire_routes() -> Non
     assert save.status_code == 404
 
 
+def test_unknown_application_is_checked_before_answer_validation() -> None:
+    response = client().patch(
+        f"/api/v1/applications/{uuid4()}/answers",
+        json={"answers": [{"question_id": "age", "value": 10}]},
+    )
+
+    assert response.status_code == 404
+
+
 def test_answers_cannot_change_after_questionnaire_completion() -> None:
     api = client()
     application_id = create_application(api)
