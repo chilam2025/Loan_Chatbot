@@ -57,3 +57,10 @@ uv run --project backend uvicorn abc_credit.api.main:app --reload
 
 The schema separates application lifecycle metadata, validated applicant answers, and
 privacy-safe audit events. Schema changes must be delivered as Alembic migrations.
+
+## Academic verification mock
+
+The verification API simulates mobile OTP and PAN verification; it does not connect to
+an SMS provider, the Income Tax Department, Aadhaar, DigiLocker, or another government
+system. The mock OTP is returned in the challenge response for classroom demonstration
+only. Do not present this behavior as production identity verification.

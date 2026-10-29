@@ -9,8 +9,9 @@ must not reproduce decision logic.
 
 The implementation stores application metadata, validated answers, and audit events in
 separate relational tables behind a repository boundary. SQLite supports local
-development and PostgreSQL is configured through `ABC_DATABASE_URL`. Verification and
-model inference are added behind the service boundary in later milestones.
+development and PostgreSQL is configured through `ABC_DATABASE_URL`. The academic
+verification workflow uses a clearly labelled mock provider; model inference is added
+behind the service boundary in a later milestone.
 
 ## Conventions
 
@@ -121,14 +122,41 @@ The first accepted answer changes the application to `COLLECTING_INFORMATION`. O
 all required answers are present, it changes to `AWAITING_VERIFICATION`. Answers cannot
 be changed after that transition.
 
+### `GET /api/v1/applications/{application_id}/verification`
+
+Returns non-sensitive mock-verification progress. It never returns a mobile number,
+PAN, stored document name, OTP digest, or internal attempt history.
+
+### `POST /api/v1/applications/{application_id}/verification/otp/request`
+
+Creates a five-minute mock OTP challenge with three attempts. The response exposes
+`mock_code` only so the academic demonstration can proceed without an SMS provider.
+Requesting a replacement invalidates any earlier unused challenge. The database stores
+only the mobile number's final four digits and a salted OTP digest.
+
+### `POST /api/v1/applications/{application_id}/verification/otp/confirm`
+
+Confirms the mock OTP. Three failed attempts move the application to `MANUAL_REVIEW`.
+Expired, consumed, and replaced challenges return `409 Conflict`.
+
+### `POST /api/v1/applications/{application_id}/verification/pan`
+
+Validates the official PAN structure of five letters, four digits, and one final letter,
+then records a clearly labelled mock success. This endpoint does not contact the Income
+Tax Department and does not store the PAN value.
+
+### `POST /api/v1/applications/{application_id}/verification/documents`
+
+Records metadata for a salary slip, bank statement, or income proof. PDF, JPEG, and PNG
+metadata up to 10 MB is accepted. Binary document contents must eventually be handled by
+separate encrypted object storage and are not accepted by this endpoint.
+
+When mobile, PAN, and document checks are complete, the application moves from
+`AWAITING_VERIFICATION` to `READY_FOR_REVIEW`.
+
 ## Planned endpoints
 
-These paths are reserved by the contract but are not part of the questionnaire slice.
-
-### `POST /api/v1/applications/{application_id}/verify`
-
-Starts or records an OTP, PAN, DigiLocker, or document-verification operation. The
-academic implementation will use clearly labelled mock providers.
+These paths are reserved but are not part of the mock-verification slice.
 
 ### `POST /api/v1/applications/{application_id}/submit`
 
