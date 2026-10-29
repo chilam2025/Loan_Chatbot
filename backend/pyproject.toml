@@ -7,6 +7,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "alembic>=1.16,<2",
     "fastapi>=0.115,<1",
+    "joblib>=1.4",
     "matplotlib>=3.9",
     "pandas>=2.2",
     "scikit-learn>=1.6",
@@ -27,6 +28,7 @@ postgres = [
 ]
 
 [project.scripts]
+phase-b = "abc_credit.modeling.phase_b:main"
 phase-a = "abc_credit.phase_a:main"
 prepare-data = "abc_credit.preprocessing:main"
 
