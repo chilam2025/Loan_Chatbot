@@ -1,0 +1,5 @@
+Single-database Alembic migrations for the ABC Credit backend.
+
+Run from the repository root with:
+
+    uv run --project backend alembic -c backend/alembic.ini upgrade head
