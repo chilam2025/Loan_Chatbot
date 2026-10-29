@@ -5,6 +5,7 @@ description = "Predictive loan-decision pipeline and conversational application 
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "joblib>=1.4",
     "matplotlib>=3.9",
     "pandas>=2.2",
     "scikit-learn>=1.6",
@@ -19,6 +20,7 @@ dev = [
 ]
 
 [project.scripts]
+phase-b = "abc_credit.modeling.phase_b:main"
 phase-a = "abc_credit.phase_a:main"
 prepare-data = "abc_credit.preprocessing:main"
 
