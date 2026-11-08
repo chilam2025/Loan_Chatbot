@@ -62,6 +62,7 @@ Validation applications: 16,260.
 | DECLINED | 730 | 124 |
 
 ### Local inference timing
+
 - Median single-application latency: 25.09 ms.
 - 95th-percentile latency: 51.17 ms.
 - Measured over 50 warm runs, including input normalization.
@@ -81,3 +82,12 @@ are development estimates, not independent final performance.
 Performance on the instructor's hidden dataset is unknown.
 The model predicts historical decisions, not repayment or default.
 Excluding gender does not establish fairness.
+| Development validation setting | Declines caught (of 854) | Historical approvals flagged | Illustrative cost |
+|---|---:|---:|---:|
+| Packaged threshold (0.196978) | 124 | 326 | 3,976 |
+| Approximately 20% recall | 171 | 586 | 4,001 |
+| Approximately 40% recall | 342 | 1,901 | 4,461 |
+
+Illustrative cost = 5 × missed historical declines + historical approvals flagged.
+The packaged setting is the demo default. It caught 14.52% of historical
+declines on development validation.
