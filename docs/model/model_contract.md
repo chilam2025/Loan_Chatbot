@@ -138,3 +138,45 @@ final performance estimate.
 - Excluding gender does not establish fairness.
 - Current evidence supports an academic prototype,
   not real-world autonomous lending.
+
+  ## CatBoost candidate integration
+
+Model version: catboost-vehicle-value-v1.
+
+Local artifact:
+models/catboost_vehicle_value_v1/decision_model.joblib
+
+Load using:
+abc_credit.modeling.inference.load_model
+
+Predict using:
+abc_credit.modeling.inference.predict_applications
+
+Required input fields:
+Age, Loan_Amount, LTV, Net_salary, Qualifications,
+Employment_Type, Pincode, Product_Code, Resident_Type,
+Final_Tier, Make_Code, Model_Description, Model_Variant,
+PAST_LOANS_ACTIVE.
+
+Every required field must be present. Missing values are supported.
+Malformed and infinite numeric inputs are rejected.
+Additional fields are excluded before prediction.
+
+Derived features are calculated inside the pipeline.
+The backend must not calculate or impute these separately.
+
+Output columns:
+decision, probability_declined, threshold, model_version.
+
+probability_declined means estimated probability of a historical
+DECLINED decision. It is not a probability of repayment default.
+
+Threshold: 0.1969780084859722.
+DECLINED when probability_declined >= threshold; otherwise APPROVED.
+
+The existing Random Forest version remains supported.
+Backend adoption of CatBoost requires an explicit configuration
+change; creating the package does not switch the API automatically.
+
+The trained artifact is excluded from Git and must be transferred
+through the team's agreed private handoff process.

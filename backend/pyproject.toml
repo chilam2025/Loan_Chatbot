@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "alembic>=1.16,<2",
+    "catboost>=1.2.10",
     "fastapi>=0.115,<1",
     "joblib>=1.4",
     "matplotlib>=3.9",

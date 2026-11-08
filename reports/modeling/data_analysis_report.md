@@ -271,3 +271,28 @@ Seven integration tests depend on the local trained artifact and skip
 if it is unavailable.
 
 These checks verify software behaviour, not predictive effectiveness.
+
+## Final development update: CatBoost candidate
+
+Further experiments compared boosting approaches, CatBoost,
+class weights, calibration and financing-feature combinations.
+
+The selected candidate uses unweighted CatBoost with an implied
+vehicle-value feature. In the three training-fold comparisons,
+this feature increased average precision in every fold, with mean
+average precision increasing from 0.15419 to 0.15588.
+
+Development validation average precision increased from 0.16721
+to 0.17007. These are modest improvements and do not establish
+performance on unseen external data.
+
+Sigmoid calibration produced negligible changes, so the simpler
+uncalibrated pipeline was retained.
+
+The packaged threshold uses an illustrative 5:1 disagreement-cost
+assumption. Its validation precision is 27.56% and recall is 14.52%.
+It favours fewer false declines at the expense of missing many
+historical declines.
+
+The artifact loads successfully, inference checks pass, all 66
+project tests pass, and Ruff checks pass.

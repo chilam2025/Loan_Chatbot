@@ -1,140 +1,83 @@
-# Model Card — random-forest-v1
+## Current packaged candidate
 
-## Purpose
+- Model version: catboost-vehicle-value-v1
+- Purpose: Predict historical APPROVED/DECLINED decisions.
+- Model: CatBoostClassifier.
+- Configuration: 600 iterations, depth 4, learning rate 0.05,
+  L2 regularization 10, random seed 42.
+- Gender, ID and Decision are excluded from predictors.
+- No class weighting or probability calibration is applied.
+- Sigmoid calibration was evaluated and showed negligible benefit.
 
-Academic prototype predicting historical loan approval decisions:
-APPROVED or DECLINED.
+### Feature processing
 
-It does not predict repayment or default and is not validated for
-autonomous real-world lending.
+Zero or missing LTV is replaced with the training-fitted median,
+with a separate missing-or-zero indicator.
 
-## Model
+Implied vehicle value is calculated as:
+Loan_Amount / (original LTV / 100).
 
-- RandomForestClassifier
-- 150 trees
-- Maximum depth: 18
-- Minimum samples per leaf: 5
-- No class weighting
-- Random seed: 42
-- No separate probability calibration selected
+This calculation uses only original LTV values greater than zero
+and at most 100. Otherwise, implied vehicle value remains missing.
+It is a derived feature, not a verified market price.
 
-## Inputs
+## Data and artifacts
 
-14 fields: Age, Loan_Amount, LTV, Net_salary, Qualifications,
-Employment_Type, Pincode, Product_Code, Resident_Type, Final_Tier,
-Make_Code, Model_Description, Model_Variant and PAST_LOANS_ACTIVE.
+- Training: 75,882 applications.
+- Development validation: 16,260 applications.
+- Internal test: 16,261 applications. The packaging run did not evaluate this partition.
+- Preprocessing was fitted on the training partition.
+- See [the model contract](model_contract.md) for required inputs and output definitions.
+- Local artifact: `models/catboost_vehicle_value_v1/decision_model.joblib`.
+- Package metadata: `models/catboost_vehicle_value_v1/metadata.json`.
+- The trained artifact is kept outside Git and shared through the team's private handoff process.
 
-ID, Decision and Gender are excluded as predictors.
+### Decision threshold
 
-See model_contract.md for input types and output definitions.
+Threshold: 0.1969780084859722.
 
-## Data and preprocessing
+Predict DECLINED when probability_declined >= threshold;
+otherwise predict APPROVED.
 
-The source CSV contains 108,423 rows, including one empty unlabelled
-record. There are 108,422 labelled applications.
+The threshold was selected using an illustrative cost of 5 for
+a missed historical decline and 1 for a false historical decline.
+These are assumed disagreement costs, not measured default losses.
 
-Current preparation excludes 8 records in conflicting-label groups
-and removes 11 repeated feature records, leaving 108,403 records.
+### Development validation results
 
-Stratified partitions:
-- Training: 75,882
-- Validation: 16,260
-- Internal test: 16,261
-
-Preprocessing is fitted on training data only:
-- Numeric median imputation with missing indicators
-- Numeric StandardScaler
-- Categorical most-frequent imputation
-- One-hot encoding with rare-category grouping
-
-Actual ages above 60, zero income and zero LTV are retained in this
-version. Experimental feature transformations were not adopted.
-
-## Decision threshold
-
-DECLINED if the historical-decline score is at least:
-0.13052013989740333
-
-Otherwise APPROVED.
-
-The threshold was selected on validation data using an illustrative
-5:1 cost ratio for false approvals versus false declines relative
-to historical labels. This is not a measured default-loss ratio.
-
-## Development validation results
+Validation applications: 16,260.
 
 | Metric | Result |
 |---|---:|
-| Accuracy | 92.63% |
-| DECLINED precision | 22.87% |
-| DECLINED recall | 16.98% |
-| DECLINED F1 | 19.49% |
-| Average precision | 0.1613 |
-| Brier score | 0.04746 |
+| Accuracy | 93.51% |
+| Declined precision | 27.56% |
+| Declined recall | 14.52% |
+| Declined F1 | 0.1902 |
+| Average precision | 0.1701 |
+| Brier score | 0.04678 |
 
-| Actual / Predicted | APPROVED | DECLINED |
+| Historical decision | Predicted APPROVED | Predicted DECLINED |
 |---|---:|---:|
-| APPROVED | 14,917 | 489 |
-| DECLINED | 709 | 145 |
+| APPROVED | 15,080 | 326 |
+| DECLINED | 730 | 124 |
 
-These are development results from repeatedly used validation data,
-not an independent final estimate.
+### Local inference timing
+- Median single-application latency: 25.09 ms.
+- 95th-percentile latency: 51.17 ms.
+- Measured over 50 warm runs, including input normalization.
+- Excludes startup, network and API overhead.
 
-## Model selection
+### Verification and limitations
 
-Logistic Regression and Random Forest were compared, including
-class-weighted variants.
+The artifact was saved, loaded and checked for identical predictions.
+The complete project test suite passed: 66 tests.
+Ruff checks passed.
 
-Standard Random Forest had a small, consistent cost advantage over
-standard Logistic Regression in three training-only outer folds.
-The advantage was modest and does not establish statistical significance.
+Recall remains limited: the selected threshold missed 730 of 854
+historical declines. Validation was reused during development, and
+the internal test partition was inspected earlier. These results
+are development estimates, not independent final performance.
 
-Sigmoid calibration did not clearly improve both Brier score and
-log loss, so no separate calibration was selected.
-
-## Software verification
-
-Reported local results:
-- 25 tests passed
-- Ruff: all checks passed
-
-Tests include feature contracts, missing values, unseen categories,
-probability ranges, decision labels, serialization and reproducible
-training on synthetic data.
-
-Seven private-artifact integration tests skip when the local trained
-artifact is absent. The nine synthetic tests do not require it.
-
-Passing tests establishes tested software behaviour, not model quality.
-
-## Artifacts
-
-- models/random_forest_v1/decision_model.joblib
-- models/random_forest_v1/metadata.json
-
-Exact creation date and dependency versions are recorded in metadata.json.
-
-The artifact requires compatible dependencies and project source.
-Load only trusted joblib files.
-
-## Limitations
-
-- Most historical declines are missed at the selected threshold.
-- Historical decisions may reflect omitted information or prior biases.
-- Removing conflicting labels may exclude legitimate applications.
-- Validation was reused for feature and model selection.
-- The internal test set was inspected during earlier development;
-  it must not be described as an untouched final test.
-- Excluding gender does not establish fairness.
-- Unknown categories can be processed, but their prediction quality
-  is not guaranteed.
-- Scores are uncalibrated historical-decline estimates, not default
-  probabilities.
-- Batch prediction timings are not single-request or chatbot latency.
-
-## Remaining evaluation
-
-- Independent evaluation through the instructor's reserved holdout
-- Group-specific error analysis
-- Single-application inference latency measurement
-- Team agreement on cost assumptions and record-selection policy
+Performance on the instructor's hidden dataset is unknown.
+The model predicts historical decisions, not repayment or default.
+Excluding gender does not establish fairness.

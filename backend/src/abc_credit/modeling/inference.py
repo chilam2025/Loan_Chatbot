@@ -14,8 +14,21 @@ def load_model(path):
     bundle = joblib.load(Path(path))
     metadata = bundle["metadata"]
 
-    if metadata["model_version"] != "random-forest-v1":
+    supported_versions = {
+        "random-forest-v1",
+        "catboost-vehicle-value-v1",
+    }
+
+    if metadata["model_version"] not in supported_versions:
         raise ValueError("Unsupported model version")
+
+    threshold = metadata.get("threshold")
+    if (
+        not isinstance(threshold, (int, float))
+        or not np.isfinite(threshold)
+        or not 0 <= threshold <= 1
+    ):
+        raise ValueError("Invalid model threshold")
 
     return bundle
 
