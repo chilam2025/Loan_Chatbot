@@ -1,182 +1,78 @@
-# Model Contract — random-forest-v1
+# Model Contract — catboost-pincode-prefix-v1
 
 ## Purpose
 
-Predict historical loan approval decisions: APPROVED or DECLINED.
+Predict historical loan approval decisions (`APPROVED` or `DECLINED`) for the academic prototype. The model's target is the historical decision. Repayment and default outcomes are outside its scope.
 
-This model does not predict repayment or default.
+## Artifact and prediction interface
 
-## Artifact
+- Model version: `catboost-pincode-prefix-v1`
+- Local artifact: `models/catboost_pincode_prefix_v1/decision_model.joblib`
+- Package metadata: `models/catboost_pincode_prefix_v1/metadata.json`
 
-Local path:
-models/random_forest_v1/decision_model.joblib
+Load only trusted artifacts using `abc_credit.modeling.inference.load_model(path)`. Load the bundle once at backend startup and reuse it.
 
-Load only trusted artifacts using:
-abc_credit.modeling.inference.load_model
+Call `abc_credit.modeling.inference.predict_applications(bundle, records)` with a list of application dictionaries or a pandas DataFrame. The function returns a DataFrame with one row per application.
 
-The artifact requires the project source and compatible dependency versions.
-Recorded dependency versions are in metadata.json.
-
-## Prediction interface
-
-Use:
-abc_credit.modeling.inference.predict_applications(bundle, records)
-
-records may be a list of application dictionaries or a pandas DataFrame.
-
-Load the model once at backend startup and reuse it for predictions.
+Loading requires the project source and compatible dependency versions. The metadata records those versions. Keep the trained artifact outside Git and transfer it through the team's private handoff process.
 
 ## Required inputs
 
 | Field | Type | Meaning |
 |---|---|---|
-| Age | Numeric | Age in years |
-| Loan_Amount | Numeric | Requested loan in INR |
-| LTV | Numeric | Loan-to-value percentage, e.g. 80 means 80% |
-| Net_salary | Numeric | Self-reported monthly income in INR |
-| Qualifications | String | Qualification category |
-| Employment_Type | String | Employment category |
-| Pincode | String | Six-digit Indian postal code |
-| Product_Code | String | Vehicle product category |
-| Resident_Type | String | Residence category |
-| Final_Tier | String | Location tier |
-| Make_Code | String | Vehicle make/family |
-| Model_Description | String | Vehicle model description |
-| Model_Variant | String | Vehicle variant |
-| PAST_LOANS_ACTIVE | String | Existing active-loan category |
+| `Age` | Numeric | Age in years |
+| `Loan_Amount` | Numeric | Requested loan in INR |
+| `LTV` | Numeric | Loan-to-value percentage. For example, `80` means 80%. |
+| `Net_salary` | Numeric | Self-reported monthly income in INR |
+| `Qualifications` | String | Qualification category |
+| `Employment_Type` | String | Employment category |
+| `Pincode` | String | Original six-digit Indian postal code, including leading zeros |
+| `Product_Code` | String | Vehicle product category |
+| `Resident_Type` | String | Residence category |
+| `Final_Tier` | String | Location tier |
+| `Make_Code` | String | Vehicle make or family |
+| `Model_Description` | String | Vehicle model description |
+| `Model_Variant` | String | Vehicle variant |
+| `PAST_LOANS_ACTIVE` | String | Existing active-loan category |
 
-ID, Decision and Gender are not predictors.
+## Input handling
 
-## Input behaviour
+- Include every required field in each application. Use `null` or `None` to represent a missing value where the application rules allow it.
+- The inference function rejects malformed and infinite numeric values and ignores extra fields. `ID`, `Decision`, and `Gender` are excluded from the model inputs.
+- Categorical values are trimmed, and their original case is preserved. CatBoost can process categories it did not encounter during training.
+- Send `Pincode` as a six-digit string, preserving leading zeros. The pipeline trims surrounding whitespace, takes the first three digits of a valid code, and treats invalid or missing codes as missing.
+- Send the original `LTV`. The pipeline replaces zero or missing LTV with the training median and adds a missing-or-zero indicator. Zero income is preserved.
+- The pipeline derives implied vehicle value as `Loan_Amount / (original LTV / 100)` when the original LTV is greater than zero and at most 100. For other LTV values, the derived feature stays missing.
 
-- Every required field must be present.
-- Missing values may be supplied as null/None for fitted imputation.
-- Unknown categorical values are supported by the encoder.
-- Categorical whitespace is stripped; category case is preserved.
-- Malformed and infinite numeric values are rejected.
-- Extra fields are ignored.
-- Zero income and zero LTV remain unchanged in this model version.
-
-The inference function is not a complete application validator.
-The backend must separately enforce agreed age, amount, pincode,
-category and application-completeness rules.
-
-Do not automatically decline applicants older than 60 unless the
-team has explicitly agreed that separate policy rule.
+The backend should pass the original fields to the pipeline and enforce the team's agreed application validation rules separately.
 
 ## Output
 
-Each application receives:
-
 | Field | Meaning |
 |---|---|
-| decision | APPROVED or DECLINED |
-| probability_declined | Uncalibrated model score for historical decline |
-| threshold | 0.13052013989740333 |
-| model_version | random-forest-v1 |
+| `decision` | `APPROVED` or `DECLINED` |
+| `probability_declined` | Uncalibrated CatBoost score between 0 and 1 for a historical `DECLINED` decision |
+| `threshold` | `0.2014630886001852` for this package |
+| `model_version` | `catboost-pincode-prefix-v1` |
 
-Decision rule:
-DECLINED when probability_declined >= threshold.
-Otherwise APPROVED.
+A score at or above the threshold produces `DECLINED`. A score below it produces `APPROVED`.
 
-The score is not a default probability and is not established
-as a perfectly calibrated historical-decline probability.
+The threshold was selected on development validation using an illustrative cost of 5 per missed historical decline and 1 per historical approval flagged as a decline. See the [model card](model_card.md) for validation results, timing, and limitations.
 
-## Preprocessing and model
+## Backend integration safeguards
 
-- Numeric median imputation fitted on training data.
-- Numeric missing indicators and StandardScaler.
-- Categorical most-frequent imputation fitted on training data.
-- One-hot encoding with rare-category grouping.
-- Random Forest: 150 trees, maximum depth 18,
-  minimum leaf size 5, no class weighting, random seed 42.
-- No separate probability calibration selected.
+- Configure the backend explicitly to load the prefix artifact. Packaging the model alone does not change the API configuration.
+- Use the model's returned `decision` as the prototype prediction. The language model must not override it.
+- Return structured errors for missing required fields, invalid inputs, and model failures. Avoid automatic approval on errors.
+- Mask personal information in logs.
+- Apply any age eligibility rule separately and only after the team agrees on it.
+- A catalogue selection may populate the vehicle fields together. Define how the application handles vehicles absent from the catalogue.
 
-## Threshold assumption
+## Earlier supported versions
 
-The threshold minimises validation disagreement cost under an
-illustrative 5:1 ratio:
+| Version | Local artifact | Packaged threshold |
+|---|---|---:|
+| `catboost-vehicle-value-v1` | `models/catboost_vehicle_value_v1/decision_model.joblib` | `0.1969780084859722` |
+| `random-forest-v1` | `models/random_forest_v1/decision_model.joblib` | `0.13052013989740333` |
 
-- Predicting APPROVED for a historical DECLINED label: cost 5.
-- Predicting DECLINED for a historical APPROVED label: cost 1.
-
-These are assumed costs, not measured financial losses.
-Their use must be justified in the project report.
-
-## Validation performance
-
-- Accuracy: 92.63%
-- DECLINED precision: 22.87%
-- DECLINED recall: 16.98%
-- DECLINED F1: 19.49%
-- Average precision / PR-AUC: 0.1613
-
-Confusion matrix, with rows and columns ordered APPROVED, DECLINED:
-
-| Actual / Predicted | APPROVED | DECLINED |
-|---|---:|---:|
-| APPROVED | 14917 | 489 |
-| DECLINED | 709 | 145 |
-
-These are development validation results, not an independent
-final performance estimate.
-
-## Integration safeguards
-
-- The language model must not override the predictive decision.
-- Missing fields, invalid inputs and model failures must produce
-  structured errors, not automatic approval.
-- The backend must mask personal information in logs.
-- Vehicle fields may be populated from one catalogue selection,
-  but unseen models require an explicit handling strategy.
-
-## Limitations
-
-- Declined recall remains low.
-- Validation data were reused across development experiments.
-- The internal test set was inspected earlier.
-- Excluding gender does not establish fairness.
-- Current evidence supports an academic prototype,
-  not real-world autonomous lending.
-
-  ## CatBoost candidate integration
-
-Model version: catboost-vehicle-value-v1.
-
-Local artifact:
-models/catboost_vehicle_value_v1/decision_model.joblib
-
-Load using:
-abc_credit.modeling.inference.load_model
-
-Predict using:
-abc_credit.modeling.inference.predict_applications
-
-Required input fields:
-Age, Loan_Amount, LTV, Net_salary, Qualifications,
-Employment_Type, Pincode, Product_Code, Resident_Type,
-Final_Tier, Make_Code, Model_Description, Model_Variant,
-PAST_LOANS_ACTIVE.
-
-Every required field must be present. Missing values are supported.
-Malformed and infinite numeric inputs are rejected.
-Additional fields are excluded before prediction.
-
-Derived features are calculated inside the pipeline.
-The backend must not calculate or impute these separately.
-
-Output columns:
-decision, probability_declined, threshold, model_version.
-
-probability_declined means estimated probability of a historical
-DECLINED decision. It is not a probability of repayment default.
-
-Threshold: 0.1969780084859722.
-DECLINED when probability_declined >= threshold; otherwise APPROVED.
-
-The existing Random Forest version remains supported.
-Backend adoption of CatBoost requires an explicit configuration
-change; creating the package does not switch the API automatically.
-
-The trained artifact is excluded from Git and must be transferred
-through the team's agreed private handoff process.
+Read the threshold and version from the loaded bundle. The three-digit pincode conversion belongs to the `catboost-pincode-prefix-v1` pipeline.

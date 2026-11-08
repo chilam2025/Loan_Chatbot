@@ -17,6 +17,7 @@ def load_model(path):
     supported_versions = {
         "random-forest-v1",
         "catboost-vehicle-value-v1",
+        "catboost-pincode-prefix-v1",
     }
 
     if metadata["model_version"] not in supported_versions:
