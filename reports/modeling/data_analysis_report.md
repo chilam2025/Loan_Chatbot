@@ -296,3 +296,14 @@ historical declines.
 
 The artifact loads successfully, inference checks pass, all 66
 project tests pass, and Ruff checks pass.
+### CatBoost and Random Forest blend
+
+Three stratified training folds selected CatBoost alone from five
+candidate blend weights. Training-fold average precision was 0.15927
+for CatBoost alone and 0.15925 for the 75% CatBoost blend.
+
+On development validation, CatBoost achieved average precision of
+0.1701 versus 0.1613 for Random Forest. At the same number of historical
+declines caught, CatBoost flagged 59 fewer historical approvals at
+approximately 20% recall and 192 fewer at approximately 40% recall.
+The packaged candidate and threshold were retained.
