@@ -1,7 +1,10 @@
 """FastAPI application factory and default ASGI application."""
 
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from abc_credit import __version__
@@ -9,10 +12,20 @@ from abc_credit.api.routers import applications, decisions, system, verification
 from abc_credit.db.config import get_database_url
 from abc_credit.db.decision_repository import SQLAlchemyDecisionRepository
 from abc_credit.db.verification_repository import SQLAlchemyVerificationRepository
-from abc_credit.integrations.model import MockLoanModel
+from abc_credit.integrations.model import load_configured_model
 from abc_credit.services.application_service import ApplicationService
 from abc_credit.services.decision_service import DecisionService
 from abc_credit.services.verification_service import VerificationService
+
+CORS_ORIGINS_ENV = "ABC_CORS_ORIGINS"
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+
+def get_cors_origins() -> list[str]:
+    """Browser origins allowed to call the API, e.g. the local frontend dev server."""
+
+    configured = os.getenv(CORS_ORIGINS_ENV, DEFAULT_CORS_ORIGINS)
+    return [origin.strip() for origin in configured.split(",") if origin.strip()]
 
 
 def create_app(
@@ -38,7 +51,14 @@ def create_app(
     # The model is loaded once per API instance, never per request.
     app.state.decision_service = decision_service or DecisionService(
         SQLAlchemyDecisionRepository(session_factory),
-        MockLoanModel(),
+        load_configured_model(),
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=get_cors_origins(),
+        allow_methods=["GET", "POST", "PATCH"],
+        allow_headers=["Content-Type"],
     )
 
     @app.exception_handler(RequestValidationError)

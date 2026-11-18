@@ -140,7 +140,15 @@ class DecisionService:
         validate_model(model)
         self._repository = repository
         self._model = model
-        self._threshold = get_decision_threshold() if threshold is None else threshold
+        if threshold is None:
+            # Precedence: explicit ABC_DECISION_THRESHOLD, then the threshold packaged
+            # with the model (its validated operating point), then the default.
+            model_threshold = getattr(model, "default_threshold", None)
+            if os.getenv(DECISION_THRESHOLD_ENV) or model_threshold is None:
+                threshold = get_decision_threshold()
+            else:
+                threshold = float(model_threshold)
+        self._threshold = threshold
         if not 0 < self._threshold < 1:
             raise ValueError("decision threshold must be between 0 and 1")
 

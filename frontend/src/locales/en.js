@@ -9,4 +9,10 @@ export default {
   review: "Please review your answers before continuing.", reviewTitle: "Your application details", ageLabel: "Age", workLabel: "Work type", incomeLabel: "Monthly take-home income", loanLabel: "Requested loan amount",
   edit: "Edit answers", submit: "Submit application", back: "Back", continue: "Continue", working: "Submitting…", submitted: "Your application has been submitted.",
   manualReview: "We need to complete an additional review. We’ll let you know when there is an update.", startAgain: "Start a new application", currencyPrefix: "₹", validationSummary: "Please check your answer and try again.",
+  backendOffline: "We can’t reach the application service right now. Please try again shortly.", wholeNumber: "Enter a whole number.",
+  pincodeHelp: "Six digits, for example 110001.", net_salaryHelp: "Enter the amount you receive after deductions.", vehicle_priceHelp: "Include registration and insurance.", loan_amountHelp: "This can’t be more than the vehicle price.",
+  verificationIntro: "Thanks, that’s all the questions. Next, a few quick verification steps.", mobile: "What is your 10-digit mobile number?", mobileHelp: "We’ll send a one-time code (simulated in this prototype).",
+  otp: "Enter the 6-digit code we sent.", otpHelp: "Prototype code:", pan: "What is your PAN?", panHelp: "Format: ABCDE1234F. It is checked for format only and not stored.", panMasked: "PAN provided",
+  document: "Please upload proof of income, such as a salary slip.", documentHelp: "PDF, JPEG or PNG up to 10 MB. Only the file details are recorded in this prototype.", documentRequired: "Choose a file to continue.",
+  reviewLocked: "Your answers are locked after verification. Submit when you’re ready.", approved: "Good news — your application has been approved in principle.", declinedDecision: "We’re sorry — we can’t approve this application at this time.", decisionModel: "Decision recorded by model",
 };
