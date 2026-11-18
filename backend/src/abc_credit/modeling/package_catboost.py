@@ -1,0 +1,240 @@
+"""Package the selected CatBoost candidate using a fixed threshold."""
+
+import json
+import platform
+from datetime import UTC, datetime
+from importlib.metadata import version
+from pathlib import Path
+from time import perf_counter
+
+import joblib
+import numpy as np
+
+from abc_credit.data_quality import NUMERIC_COLUMNS
+from abc_credit.modeling.ablate_catboost_features import make_model
+from abc_credit.modeling.compare_catboost import CATEGORICAL_FIELDS
+from abc_credit.modeling.feature_analysis import load_splits
+from abc_credit.modeling.inference import load_model, predict_applications
+from abc_credit.modeling.phase_b import evaluate
+
+OUTPUT = Path("models/catboost_vehicle_value_v1")
+MODEL_VERSION = "catboost-vehicle-value-v1"
+
+# Previously selected on development validation data.
+# Do not reselect this threshold during packaging.
+THRESHOLD = 0.1969780084859722
+
+
+def main():
+    artifact_path = OUTPUT / "decision_model.joblib"
+    metadata_path = OUTPUT / "metadata.json"
+
+    if artifact_path.exists() or metadata_path.exists():
+        raise FileExistsError(
+            "This model version already exists. "
+            "Use a new version rather than overwriting it."
+        )
+
+    splits = load_splits()
+
+    features = list(NUMERIC_COLUMNS) + list(CATEGORICAL_FIELDS)
+
+    X_train = splits.X_train[features].copy()
+    X_validation = splits.X_validation[features].copy()
+
+    y_train = splits.y_train.eq("DECLINED").astype(int)
+    y_validation = splits.y_validation.eq("DECLINED").astype(int)
+
+    print("Training CatBoost with implied vehicle value...", flush=True)
+
+    model = make_model("vehicle_value")
+
+    started = perf_counter()
+    model.fit(X_train, y_train)
+    training_seconds = perf_counter() - started
+
+    positive_index = list(model.classes_).index(1)
+
+    started = perf_counter()
+    probabilities = model.predict_proba(
+        X_validation
+    )[:, positive_index]
+    batch_seconds = perf_counter() - started
+
+    if not np.isfinite(probabilities).all():
+        raise ValueError("Non-finite validation probabilities")
+
+    metrics = evaluate(y_validation, probabilities, THRESHOLD)
+    matrix = metrics["confusion_matrix_approved_declined"]
+
+    metadata = {
+        "model_version": MODEL_VERSION,
+        "created_at_utc": datetime.now(UTC).isoformat(),
+        "purpose": "Predict historical loan approval decisions",
+        "status": (
+            "Academic prototype; threshold uses an illustrative "
+            "5:1 disagreement-cost assumption"
+        ),
+        "model_type": "CatBoostClassifier",
+        "feature_columns": features,
+        "excluded_predictors": ["ID", "Decision", "Gender"],
+        "derived_features": [
+            "LTV_missing_or_zero",
+            "implied_vehicle_value",
+        ],
+        "label_mapping": {"APPROVED": 0, "DECLINED": 1},
+        "positive_class": "DECLINED",
+        "positive_class_index": positive_index,
+        "threshold": THRESHOLD,
+        "decision_rule": (
+            "DECLINED if probability_declined >= threshold; "
+            "otherwise APPROVED"
+        ),
+        "calibration": (
+            "None; sigmoid calibration showed negligible benefit"
+        ),
+        "preprocessing": {
+            "ltv": (
+                "Zero/missing LTV replaced by the training-fitted "
+                "median; explicit missing-or-zero indicator"
+            ),
+            "training_ltv_median": float(
+                model.named_steps["prepare"].ltv_median_
+            ),
+            "implied_vehicle_value": (
+                "Loan_Amount / (original LTV / 100), only when "
+                "original LTV is greater than 0 and at most 100; "
+                "otherwise missing"
+            ),
+            "vehicle_value_interpretation": (
+                "Derived representation, not an independently "
+                "observed or verified vehicle market price"
+            ),
+            "categorical": (
+                "Existing PrepareCatBoost transformation; "
+                "native CatBoost categorical handling"
+            ),
+        },
+        "hyperparameters": {
+            "iterations": 600,
+            "depth": 4,
+            "learning_rate": 0.05,
+            "l2_leaf_reg": 10,
+            "loss_function": "Logloss",
+            "random_seed": 42,
+            "thread_count": 2,
+            "class_weights": None,
+        },
+        "threshold_selection": {
+            "data": "Previously reused development validation partition",
+            "method": "Previously selected minimum illustrative 5:1 cost",
+            "false_approval_cost": 5,
+            "false_decline_cost": 1,
+            "reselected_during_packaging": False,
+            "assumption": (
+                "Historical-decision disagreement costs, "
+                "not measured repayment/default losses"
+            ),
+        },
+        "training_rows": len(X_train),
+        "validation_rows": len(X_validation),
+        "validation_metrics": metrics,
+        "validation_assumed_cost_5_to_1": (
+            5 * int(matrix[1][0]) + int(matrix[0][1])
+        ),
+        "timing": {
+            "training_seconds": training_seconds,
+            "validation_batch_prediction_seconds": batch_seconds,
+        },
+        "versions": {
+            "python": platform.python_version(),
+            **{
+                package: version(package)
+                for package in [
+                    "catboost",
+                    "scikit-learn",
+                    "pandas",
+                    "numpy",
+                    "joblib",
+                ]
+            },
+        },
+        "limitations": [
+            "Predicts historical decisions, not repayment/default.",
+            "Declined-class recall remains limited.",
+            "Validation was reused during model development.",
+            "Internal test partition was inspected in earlier work.",
+            "This script does not evaluate the test partition.",
+            "Hidden evaluation performance is unknown.",
+            "Excluding gender does not establish fairness.",
+            "Requires compatible dependencies and project source.",
+        ],
+    }
+
+    bundle = {"pipeline": model, "metadata": metadata}
+
+    # Check the public inference interface before saving.
+    sample = X_validation.head(20)
+    expected = predict_applications(bundle, sample)
+
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    joblib.dump(bundle, artifact_path)
+
+    restored = load_model(artifact_path)
+    actual = predict_applications(restored, sample)
+
+    np.testing.assert_allclose(
+        expected["probability_declined"],
+        actual["probability_declined"],
+        rtol=1e-12,
+        atol=1e-15,
+    )
+    np.testing.assert_array_equal(
+        expected["decision"],
+        actual["decision"],
+    )
+
+    # Warm up, then measure the complete single-application interface.
+    one_application = sample.head(1)
+    predict_applications(restored, one_application)
+
+    durations_ms = []
+    for _ in range(50):
+        started = perf_counter()
+        predict_applications(restored, one_application)
+        durations_ms.append((perf_counter() - started) * 1000)
+
+    metadata["timing"].update({
+        "single_application_latency_runs": 50,
+        "single_application_latency_median_ms": float(
+            np.median(durations_ms)
+        ),
+        "single_application_latency_p95_ms": float(
+            np.percentile(durations_ms, 95)
+        ),
+        "latency_scope": (
+            "Local warm inference including input normalization; "
+            "excludes startup, network and API overhead"
+        ),
+    })
+
+    # Persist the same completed metadata in both files.
+    joblib.dump(bundle, artifact_path)
+    metadata_path.write_text(
+        json.dumps(metadata, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+
+    print("\nModel version:", MODEL_VERSION)
+    print("Fixed threshold:", THRESHOLD)
+    print("\nValidation metrics:")
+    print(json.dumps(metrics, indent=2))
+    print("\nTiming:")
+    print(json.dumps(metadata["timing"], indent=2))
+    print("\nSerialization and inference checks passed.")
+    print("Saved to:", OUTPUT)
+    print("Test partition was not evaluated.")
+
+
+if __name__ == "__main__":
+    main()
