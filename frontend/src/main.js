@@ -218,15 +218,20 @@ async function handleAnswer(raw) {
 
 async function handleVerification(input) {
   if (state.step === "mobile") {
-    state.challenge = await requestOtp(state.applicationId, input.value.trim());
-    applicant(input.value.trim()); state.step = "otp"; bot(t("otp"));
+    // Accept common ways of writing an Indian number: spaces, dashes, +91, or a leading 0.
+    const mobile = input.value.replace(/[\s-]/g, "").replace(/^(\+?91|0)(?=\d{10}$)/, "");
+    if (!/^[6-9]\d{9}$/.test(mobile)) throw new Error(t("mobileError"));
+    state.challenge = await requestOtp(state.applicationId, mobile);
+    applicant(mobile); state.step = "otp"; bot(t("otp"));
   } else if (state.step === "otp") {
     const result = await confirmOtp(state.applicationId, state.challenge.challenge_id, input.value.trim());
     applicant("••••••");
     if (result.status === "MANUAL_REVIEW") { state.step = "decided"; bot(t("manualReview")); return; }
     state.step = "pan"; bot(t("pan"));
   } else if (state.step === "pan") {
-    await verifyPan(state.applicationId, input.value.trim().toUpperCase());
+    const pan = input.value.trim().toUpperCase();
+    if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) throw new Error(t("panError"));
+    await verifyPan(state.applicationId, pan);
     applicant(t("panMasked")); state.step = "document"; bot(t("document"));
   } else if (state.step === "document") {
     const file = input.files?.[0];
