@@ -10,8 +10,8 @@ must not reproduce decision logic.
 The implementation stores application metadata, validated answers, and audit events in
 separate relational tables behind a repository boundary. SQLite supports local
 development and PostgreSQL is configured through `ABC_DATABASE_URL`. The academic
-verification workflow uses a clearly labelled mock provider; model inference is added
-behind the service boundary in a later milestone.
+verification workflow uses a clearly labelled mock provider. Model inference sits behind
+the service boundary and currently uses a clearly labelled deterministic mock model.
 
 ## Conventions
 
@@ -115,8 +115,16 @@ Request:
 ```
 
 The supported applicant question identifiers are `age`, `qualifications`,
-`employment_type`, `pincode`, `gender`, `resident_type`, `net_salary`, `loan_amount`,
-and `past_loans_active`.
+`employment_type`, `pincode`, `gender`, `resident_type`, `net_salary`, `vehicle_price`,
+`loan_amount`, and `past_loans_active`. A request may contain at most one answer per
+question.
+
+`vehicle_price` is the on-road price in INR (10,000–50,000,000). Loan-to-value is never
+asked: the backend derives `LTV = loan_amount / vehicle_price × 100` (percentage, two
+decimals) for the model. When both amounts are known, including one saved in an earlier
+request, a `loan_amount` above `vehicle_price` is rejected with `422` and
+`"loan_amount must not exceed vehicle_price"`. All validation is deterministic; no
+language model decides whether a value is valid.
 
 The first accepted answer changes the application to `COLLECTING_INFORMATION`. Once
 all required answers are present, it changes to `AWAITING_VERIFICATION`. Answers cannot
@@ -154,19 +162,55 @@ separate encrypted object storage and are not accepted by this endpoint.
 When mobile, PAN, and document checks are complete, the application moves from
 `AWAITING_VERIFICATION` to `READY_FOR_REVIEW`.
 
-## Planned endpoints
-
-These paths are reserved but are not part of the mock-verification slice.
-
 ### `POST /api/v1/applications/{application_id}/submit`
 
-Checks completeness and verification status, builds the deterministic model feature
-payload, calls the approved predictive model, and records the immutable decision event.
+Submits a `READY_FOR_REVIEW` application exactly once. The backend maps the stored
+answers to the model's training columns, calls the predictive model loaded at startup,
+and applies the deterministic rule `approval_probability >= threshold → APPROVED`,
+otherwise `DECLINED`. The threshold comes from `ABC_DECISION_THRESHOLD` (default `0.5`,
+exclusive range 0–1). Any request body is ignored; clients and language models cannot
+supply or override a decision, probability, or threshold.
+
+The application moves `READY_FOR_REVIEW → SUBMITTED → APPROVED | DECLINED`. Until
+Person 1's trained model is integrated, a deterministic mock is used and identified by
+`model_provider: "mock"`.
+
+The model is loaded once at startup and validated before the API accepts traffic: its
+version must be a short identifier, its provider must be `mock` or `trained`, and when
+`ABC_EXPECTED_MODEL_VERSION` is set the loaded version must match it exactly, otherwise
+the service refuses to start.
+
+Response: `200 OK`
+
+```json
+{
+  "application_id": "7de6fb54-fdb8-4f58-b055-7aedfc09ba15",
+  "status": "APPROVED",
+  "decision": "APPROVED",
+  "approval_probability": 0.8455,
+  "threshold": 0.5,
+  "model_version": "mock-0.1.0",
+  "model_provider": "mock",
+  "decided_at": "2026-11-04T08:00:00Z",
+  "next_action": "review_sanction_documents"
+}
+```
+
+- `404`: unknown application.
+- `409`: application is not `READY_FOR_REVIEW`, or has already been submitted.
+- `422`: required answers are missing, e.g.
+  `"Application is missing required answers: vehicle_price"`. The status is unchanged.
+- `503`: the model failed or returned a probability outside 0–1. The application returns
+  to `READY_FOR_REVIEW` and the client may retry; no outcome is guessed.
+
+Each decision stores the model version, probability, threshold, and inference latency in
+milliseconds in an audit event. Applicant answers are not copied into the event.
 
 ### `GET /api/v1/applications/{application_id}/decision`
 
-Returns the applicant-safe decision and next steps. Raw internal model diagnostics and
-PII are excluded from the response.
+Returns the recorded decision in the same shape as the submit response. Applicant
+answers, model features, latency, and PII are excluded. Unknown applications return
+`404`; applications without a decision return `409`.
 
 ## Error behaviour
 

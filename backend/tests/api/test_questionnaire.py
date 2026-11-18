@@ -29,6 +29,7 @@ def valid_answers() -> list[dict[str, int | str]]:
         {"question_id": "gender", "value": "Female"},
         {"question_id": "resident_type", "value": "O"},
         {"question_id": "net_salary", "value": 75_000},
+        {"question_id": "vehicle_price", "value": 650_000},
         {"question_id": "loan_amount", "value": 500_000},
         {"question_id": "past_loans_active", "value": "NO_PAST_LOANS"},
     ]
@@ -44,7 +45,7 @@ def test_returns_first_question_with_validation_metadata() -> None:
     payload = response.json()
     assert payload["status"] == "STARTED"
     assert payload["answered_questions"] == 0
-    assert payload["total_questions"] == 9
+    assert payload["total_questions"] == 10
     assert payload["question"] == {
         "question_id": "age",
         "prompt": "What is your age?",
@@ -95,8 +96,10 @@ def test_saves_answers_and_returns_first_unanswered_question() -> None:
     assert payload["answered_questions"] == 2
     assert payload["next_action"] == "answer_questions"
     assert payload["question"]["question_id"] == "qualifications"
-    assert "30" not in response.text
-    assert "SAL" not in response.text
+    # Strip the random UUID first; it can contain "30" by chance.
+    body = response.text.replace(application_id, "")
+    assert "30" not in body
+    assert "SAL" not in body
 
     application = api.get(f"/api/v1/applications/{application_id}").json()
     assert application["status"] == "COLLECTING_INFORMATION"
@@ -115,8 +118,8 @@ def test_completing_questionnaire_moves_to_verification() -> None:
     assert response.json() == {
         "application_id": application_id,
         "status": "AWAITING_VERIFICATION",
-        "answered_questions": 9,
-        "total_questions": 9,
+        "answered_questions": 10,
+        "total_questions": 10,
         "next_action": "verify_identity",
         "question": None,
     }
@@ -209,3 +212,76 @@ def test_answers_cannot_change_after_questionnaire_completion() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"].endswith("AWAITING_VERIFICATION")
+
+
+def test_vehicle_price_is_asked_before_loan_amount_and_ltv_is_never_asked() -> None:
+    api = client()
+    application_id = create_application(api)
+    asked = []
+    for answer in valid_answers():
+        question = api.get(f"/api/v1/applications/{application_id}/next-question").json()
+        asked.append(question["question"]["question_id"])
+        api.patch(f"/api/v1/applications/{application_id}/answers", json={"answers": [answer]})
+
+    assert asked.index("vehicle_price") == asked.index("loan_amount") - 1
+    assert "ltv" not in asked
+    assert asked == [answer["question_id"] for answer in valid_answers()]
+
+
+def test_rejects_loan_amount_above_vehicle_price_in_one_request() -> None:
+    api = client()
+    application_id = create_application(api)
+
+    response = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={
+            "answers": [
+                {"question_id": "vehicle_price", "value": 400_000},
+                {"question_id": "loan_amount", "value": 400_001},
+            ]
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "loan_amount must not exceed vehicle_price"}
+    progress = api.get(f"/api/v1/applications/{application_id}/next-question").json()
+    assert progress["answered_questions"] == 0
+
+
+def test_ltv_limit_is_checked_against_previously_saved_answers() -> None:
+    api = client()
+    application_id = create_application(api)
+    api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "vehicle_price", "value": 400_000}]},
+    )
+
+    too_high = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "loan_amount", "value": 500_000}]},
+    )
+    lower_price = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "vehicle_price", "value": 300_000}]},
+    )
+    full_value = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "loan_amount", "value": 300_000}]},
+    )
+
+    assert too_high.status_code == 422
+    assert lower_price.status_code == 200
+    assert full_value.status_code == 200
+
+
+def test_vehicle_price_bounds_are_enforced() -> None:
+    api = client()
+    application_id = create_application(api)
+
+    response = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "vehicle_price", "value": 9_999}]},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "vehicle_price must be at least 10000"}

@@ -22,6 +22,7 @@ from abc_credit.services.questionnaire import (
     InvalidAnswerError,
     localize_question,
     validate_answer,
+    validate_answer_set,
 )
 
 
@@ -140,6 +141,7 @@ class ApplicationService:
             answer.question_id: validate_answer(answer.question_id, answer.value)
             for answer in answers
         }
+        validate_answer_set({**existing.answers, **validated})
         try:
             self._repository.save_answers(
                 application_id,

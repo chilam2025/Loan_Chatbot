@@ -42,6 +42,7 @@ def test_initial_migration_creates_expected_tables(
         "application_answers",
         "applications",
         "audit_events",
+        "decisions",
         "document_metadata",
         "otp_challenges",
         "verifications",

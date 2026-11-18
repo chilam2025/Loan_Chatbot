@@ -19,6 +19,7 @@ class QuestionId(StrEnum):
     GENDER = "gender"
     RESIDENT_TYPE = "resident_type"
     NET_SALARY = "net_salary"
+    VEHICLE_PRICE = "vehicle_price"
     LOAN_AMOUNT = "loan_amount"
     PAST_LOANS_ACTIVE = "past_loans_active"
 
@@ -64,7 +65,7 @@ class AnswerInput(BaseModel):
 class SaveAnswersRequest(BaseModel):
     """A small atomic batch of applicant answers."""
 
-    answers: Annotated[list[AnswerInput], Field(min_length=1, max_length=9)]
+    answers: Annotated[list[AnswerInput], Field(min_length=1, max_length=len(QuestionId))]
 
 
 class QuestionnaireResponse(BaseModel):

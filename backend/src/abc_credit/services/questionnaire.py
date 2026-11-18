@@ -118,6 +118,16 @@ QUESTIONNAIRE = (
         maximum=10_000_000,
     ),
     QuestionDefinition(
+        QuestionId.VEHICLE_PRICE,
+        {
+            "en-IN": "What is the on-road price of the vehicle in Indian rupees?",
+            "hi-IN": "भारतीय रुपये में वाहन की ऑन-रोड कीमत कितनी है?",
+        },
+        AnswerType.INTEGER,
+        minimum=10_000,
+        maximum=50_000_000,
+    ),
+    QuestionDefinition(
         QuestionId.LOAN_AMOUNT,
         {
             "en-IN": "How much would you like to borrow in Indian rupees?",
@@ -191,3 +201,26 @@ def validate_answer(question_id: QuestionId, value: AnswerValue) -> AnswerValue:
     if definition.pattern is not None and fullmatch(definition.pattern, value) is None:
         raise InvalidAnswerError(f"{question_id.value} has an invalid format")
     return value
+
+
+MAX_LTV_PERCENT = 100.0
+
+
+def calculate_ltv(loan_amount: int, vehicle_price: int) -> float:
+    """Derive loan-to-value as a percentage, matching the training data's 0-100 scale."""
+
+    return round(loan_amount / vehicle_price * 100, 2)
+
+
+def validate_answer_set(answers: dict[QuestionId, AnswerValue]) -> None:
+    """Apply rules that span several answers, such as the derived LTV limit."""
+
+    loan_amount = answers.get(QuestionId.LOAN_AMOUNT)
+    vehicle_price = answers.get(QuestionId.VEHICLE_PRICE)
+    # Compare exact integers; the rounded LTV would let a loan slightly above the price pass.
+    if (
+        isinstance(loan_amount, int)
+        and isinstance(vehicle_price, int)
+        and loan_amount * 100 > MAX_LTV_PERCENT * vehicle_price
+    ):
+        raise InvalidAnswerError("loan_amount must not exceed vehicle_price")

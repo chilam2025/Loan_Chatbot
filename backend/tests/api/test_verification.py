@@ -23,6 +23,7 @@ def valid_answers() -> list[dict[str, int | str]]:
         {"question_id": "gender", "value": "Female"},
         {"question_id": "resident_type", "value": "O"},
         {"question_id": "net_salary", "value": 75_000},
+        {"question_id": "vehicle_price", "value": 650_000},
         {"question_id": "loan_amount", "value": 500_000},
         {"question_id": "past_loans_active", "value": "NO_PAST_LOANS"},
     ]
