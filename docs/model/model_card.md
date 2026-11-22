@@ -1,4 +1,4 @@
-# Model Card — catboost-pincode-prefix-v1
+﻿# Model Card â€” catboost-pincode-prefix-v1
 
 ## Current packaged candidate
 
@@ -79,4 +79,86 @@ The table below records earlier development results for `catboost-vehicle-value-
 |---|---:|---:|---:|
 | Exact-pincode packaged threshold (`0.1969780084859722`) | 124 | 326 | 3,976 |
 | Approximately 20% recall | 171 | 586 | 4,001 |
-| Approximately 40% recall | 342 | 1,901 | 4,461 |
+| Approximately 40% recall | 342 | 1,901 | 4,461 |## catboost-minimal-v2 (handoff model)
+
+**Purpose.** Estimate the probability that the historical ABC Credit decision
+for a two-wheeler loan application was DECLINED. The label is a historical
+decision, not repayment behaviour. Academic prototype; not for real lending.
+
+**Model.** CatBoost classifier (600 iterations, depth 4, learning rate 0.05,
+L2 10, seed 42, no class weights, no separate calibration). Inputs are ten
+fields obtained from five applicant questions: age, pincode, vehicle,
+loan amount and vehicle price, plus whether an active loan exists. The backend
+derives LTV, `Final_Tier` and the vehicle fields (see `model_contract_minimal.md`).
+Implied vehicle value and pincode prefixes of 2, 3, 4 and 5 digits are built
+inside the model. Gender, ID, Decision, net salary, qualification, employment
+type and resident type are not used.
+
+**Decision rule.** DECLINED if `probability_declined >= 0.11018`. This is the
+cutoff that reaches 40% DECLINED recall on held-out training predictions (three
+profile-grouped folds), chosen to weight DECLINED recall as the brief asks. It
+was not tuned on validation. Other settings: 30% recall at 0.1361, 50% at
+0.0900, 60% at 0.0735.
+
+**Development validation (16,260 applications, 854 historical declines).**
+
+| Measure | Value |
+|---|---|
+| Accuracy (always-approve baseline: 94.75%) | 86.64% |
+| Balanced accuracy / macro F1 | 64.3% / 0.5815 |
+| APPROVED precision / recall / F1 | 96.37% / 89.26% / 0.927 |
+| DECLINED precision / recall / F1 | 16.88% / 39.34% / 0.236 |
+| Average precision / AUC / Brier | 0.1827 / 0.7766 / 0.0464 |
+| Confusion matrix (APPROVED, DECLINED) | [[13751, 1655], [518, 336]] |
+
+Accuracy is below the always-approve baseline because approvals are 94.75% of
+the data and the cutoff deliberately flags about 12% of applications. For this
+reason the report also uses balanced accuracy, per-class precision and recall,
+and ranking metrics (AP, AUC). 3.1% of validation rows share an applicant
+profile with a training row; on the rest, DECLINED recall is 38.73% and
+precision 16.50%.
+
+**Why five questions.** In profile-grouped training folds, CatBoost with all 14
+fields scored AP 0.1702; the five-question set scored 0.1676 (difference
+-0.0027, 95% interval -0.0054 to -0.0002) with 0.4% more false flags. Dropping
+net salary, employment type, qualification and resident type changed nothing
+measurable. A field set built around income and employment (age, loan amount,
+LTV, net salary, employment type, active loan) scored AP 0.1451, and removing
+pincode costs the most of any single field.
+
+**Why the pincode hierarchy (v2 over v1).** Adding 2-, 4- and 5-digit prefixes
+gained +0.0070 AP in grouped training folds (95% interval +0.0035 to +0.0106)
+and +0.0024 on validation (interval -0.0039 to +0.0091, not significant).
+
+**Experiments that did not help.** Seed averaging, tuned CatBoost settings,
+extra relative features, monotone LTV, LightGBM and XGBoost, a CatBoost +
+LightGBM blend (+0.006 AP in grouped folds, no gain on validation), neural
+networks, EBM, stacking, class weights, balanced undersampling, and calibration
+all landed within AP 0.15 to 0.177. The information in the fields, not the
+algorithm, limits performance.
+
+**Subgroups (validation).** Predicted decline rate: women 12.1%, men 12.3%.
+DECLINED recall: women 38.2%, men 39.7%; resident type R 17.1% against 40.5%
+for type O (791 applications). Fairness has not been established. Pincode is
+the second-strongest signal and can act as a proxy for community traits.
+
+**Explanations.** `explain_application` returns the main factors raising and
+lowering a score using CatBoost SHAP values, without raw values. They describe
+how the model scored the application relative to a typical one. They are not
+causes or advice.
+
+**Timing.** Single-application inference, warm, including input normalization:
+median 47.2 ms, p95 58.4 ms (30 warm runs on the project laptop).
+Excludes startup, network and API overhead.
+
+**Dependencies.** catboost, joblib, scikit-learn, pandas, numpy. Loading needs
+the project source. Install with `uv sync` so versions match `uv.lock`.
+
+**Limitations.** Labels are historical decisions; the data has no repayment
+outcomes, installment amounts or bureau information. About 60% of historical
+declines are missed, and about 5 in 6 flagged applications were historically
+approved. Validation data was reused during development, and the internal test
+partition was inspected earlier, so the hidden test set is the only
+independent check and its performance is unknown.
+
+
