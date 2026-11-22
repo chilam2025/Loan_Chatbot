@@ -29,4 +29,6 @@ frontend/coverage/
 !.env.example
 .idea/
 .vscode/
-
+# Trained model artifacts may encode applicant information; share privately.
+models/
+*.joblib
