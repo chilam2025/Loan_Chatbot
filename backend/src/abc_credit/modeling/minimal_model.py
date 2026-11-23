@@ -1,4 +1,4 @@
-"""Five-question model: the CatBoost pipeline behind a ten-field contract.
+"""six-question model: the CatBoost pipeline behind a ten-field contract.
 
 Applicants answer age, pincode, vehicle, loan amount and vehicle price, plus
 whether they have an active loan. The backend derives the remaining inputs.

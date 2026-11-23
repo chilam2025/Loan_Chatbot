@@ -1,4 +1,4 @@
-"""Lookup tables and the deterministic payload for the five-question flow.
+"""Lookup tables and the deterministic payload for the six-question flow.
 
 The tables come from the labeled training CSV and hold no applicant rows:
 a pincode-to-tier map and a vehicle catalogue. The backend uses them to turn

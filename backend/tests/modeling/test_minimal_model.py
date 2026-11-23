@@ -1,4 +1,4 @@
-"""Five-question model tests using synthetic data only."""
+"""six-question model tests using synthetic data only."""
 
 import joblib
 import numpy as np

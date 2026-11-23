@@ -1,4 +1,4 @@
-﻿# Model contract: five-question model (`catboost-minimal-v2`)
+# Model contract: six-question model (`catboost-minimal-v2`)
 
 **Owner:** Person 1 (machine learning). **Status:** draft for review by
 Persons 2 and 3. Replaces the 14-field contract for the chatbot flow. `catboost-minimal-v1`
@@ -21,7 +21,8 @@ decision is `DECLINED` when `probability_declined >= threshold`, otherwise
 | `loan_amount` | Requested loan in INR | Greater than zero |
 | `vehicle_price` | Vehicle price in INR | Greater than zero; used to calculate LTV |
 | `past_loans_active` | Does the applicant have an active loan? | true or false |
-
+This is six short questions. Vehicle price is used only to compute LTV
+(loan amount ÷ vehicle price). The other model inputs are derived by the backend.
 **Do not ask** for gender, qualification, employment type, residence type or
 net salary. The model does not use them (tested: removing them changes
 average precision by about 0.003), and gender is deliberately excluded.
@@ -149,7 +150,9 @@ latency. Never log raw answers beyond what the privacy rules allow.
 
 ## Dependencies
 
-`catboost`, `joblib`, `scikit-learn`, `pandas`, `numpy` (no LightGBM). The
-backend `pyproject.toml` currently lacks `catboost` and `joblib`; add them in
-a separate team-reviewed PR.
+`catboost`, `joblib`, `scikit-learn`, `pandas`, `numpy` (no LightGBM). This PR
+adds them to `backend/pyproject.toml` and `backend/uv.lock`. Install with
+`python -m uv sync --project backend` so the versions match the lock file
+(catboost 1.2.10, scikit-learn 1.9.1, pandas 3.0.6); a model saved with one
+version may not load with another.
 

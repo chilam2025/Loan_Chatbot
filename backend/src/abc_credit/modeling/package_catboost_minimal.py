@@ -1,4 +1,4 @@
-"""Package the five-question CatBoost model (ten contract fields)."""
+"""Package the six-question CatBoost model (ten contract fields)."""
 
 import json
 import platform
@@ -183,7 +183,7 @@ def main():
         "created_at_utc": datetime.now(UTC).isoformat(),
         "purpose": "Predict historical loan approval decisions",
         "status": "Academic prototype with limited decline recall",
-        "model_type": "CatBoostClassifier pipeline, five applicant questions",
+        "model_type": "CatBoostClassifier pipeline, six applicant questions",
         "feature_columns": MINIMAL_FIELDS,
         "applicant_questions": [
             "age",

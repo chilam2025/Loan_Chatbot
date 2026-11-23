@@ -1,4 +1,4 @@
-﻿# Model Card â€” catboost-pincode-prefix-v1
+# Model Card â€” catboost-pincode-prefix-v1
 
 ## Current packaged candidate
 
@@ -87,7 +87,7 @@ decision, not repayment behaviour. Academic prototype; not for real lending.
 
 **Model.** CatBoost classifier (600 iterations, depth 4, learning rate 0.05,
 L2 10, seed 42, no class weights, no separate calibration). Inputs are ten
-fields obtained from five applicant questions: age, pincode, vehicle,
+fields obtained from six applicant questions: age, pincode, vehicle,
 loan amount and vehicle price, plus whether an active loan exists. The backend
 derives LTV, `Final_Tier` and the vehicle fields (see `model_contract_minimal.md`).
 Implied vehicle value and pincode prefixes of 2, 3, 4 and 5 digits are built
@@ -118,8 +118,8 @@ and ranking metrics (AP, AUC). 3.1% of validation rows share an applicant
 profile with a training row; on the rest, DECLINED recall is 38.73% and
 precision 16.50%.
 
-**Why five questions.** In profile-grouped training folds, CatBoost with all 14
-fields scored AP 0.1702; the five-question set scored 0.1676 (difference
+**Why six questions.** In profile-grouped training folds, CatBoost with all 14
+fields scored AP 0.1702; the six-question set scored 0.1676 (difference
 -0.0027, 95% interval -0.0054 to -0.0002) with 0.4% more false flags. Dropping
 net salary, employment type, qualification and resident type changed nothing
 measurable. A field set built around income and employment (age, loan amount,

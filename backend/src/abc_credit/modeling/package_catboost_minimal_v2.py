@@ -1,4 +1,4 @@
-"""Package version 2 of the five-question model (pincode hierarchy)."""
+"""Package version 2 of the six-question model (pincode hierarchy)."""
 
 import json
 import platform
@@ -236,7 +236,7 @@ def main():
         "created_at_utc": datetime.now(UTC).isoformat(),
         "purpose": "Predict historical loan approval decisions",
         "status": "Academic prototype with limited decline recall",
-        "model_type": "CatBoostClassifier pipeline, five applicant questions",
+        "model_type": "CatBoostClassifier pipeline, six applicant questions",
         "pincode_hierarchy": (
             "Pincode prefixes of 2, 3, 4 and 5 digits as categorical "
             "features, derived inside the pipeline from the pincode answer."
@@ -330,8 +330,8 @@ def main():
             "Location (pincode) can act as a proxy for community traits.",
             (
                 "The pincode hierarchy gained about +0.007 average "
-                "precision in grouped training folds and +0.005 on "
-                "validation (not significant there)."
+                "precision in grouped training folds (interval +0.0035 to +0.0106) and +0.0024 on "
+                "validation (interval -0.0039 to +0.0091, not significant)."
             ),
         ],
     }
