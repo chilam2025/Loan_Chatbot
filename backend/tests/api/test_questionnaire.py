@@ -20,16 +20,17 @@ def create_application(api: TestClient, locale: str = "en-IN") -> str:
     return response.json()["application_id"]
 
 
+VEHICLE = "APACHE 200 4V 1CH - R MODE BSVI"
+LEGACY_QUESTIONS = {"qualifications", "employment_type", "gender", "resident_type", "net_salary"}
+
+
 def valid_answers() -> list[dict[str, int | str]]:
     return [
         {"question_id": "age", "value": 30},
-        {"question_id": "qualifications", "value": "GRAD"},
-        {"question_id": "employment_type", "value": "SAL"},
         {"question_id": "pincode", "value": "110001"},
-        {"question_id": "gender", "value": "Female"},
-        {"question_id": "resident_type", "value": "O"},
-        {"question_id": "net_salary", "value": 75_000},
-        {"question_id": "loan_amount", "value": 500_000},
+        {"question_id": "vehicle", "value": VEHICLE},
+        {"question_id": "vehicle_price", "value": 150_000},
+        {"question_id": "loan_amount", "value": 100_000},
         {"question_id": "past_loans_active", "value": "NO_PAST_LOANS"},
     ]
 
@@ -44,7 +45,7 @@ def test_returns_first_question_with_validation_metadata() -> None:
     payload = response.json()
     assert payload["status"] == "STARTED"
     assert payload["answered_questions"] == 0
-    assert payload["total_questions"] == 9
+    assert payload["total_questions"] == 6
     assert payload["question"] == {
         "question_id": "age",
         "prompt": "What is your age?",
@@ -52,7 +53,7 @@ def test_returns_first_question_with_validation_metadata() -> None:
         "required": True,
         "choices": [],
         "minimum": 18,
-        "maximum": 70,
+        "maximum": 60,
         "pattern": None,
     }
 
@@ -66,13 +67,24 @@ def test_uses_application_locale_for_prompts_and_choices() -> None:
 
     saved = api.patch(
         f"/api/v1/applications/{application_id}/answers",
-        json={"answers": [{"question_id": "age", "value": 35}]},
+        json={
+            "answers": [
+                {"question_id": "age", "value": 35},
+                {"question_id": "pincode", "value": "560002"},
+                {"question_id": "vehicle", "value": VEHICLE},
+                {"question_id": "vehicle_price", "value": 150_000},
+                {"question_id": "loan_amount", "value": 100_000},
+            ]
+        },
     )
     assert saved.status_code == 200
     question = saved.json()["question"]
-    assert question["question_id"] == "qualifications"
-    assert question["prompt"] == "आपकी उच्चतम शैक्षणिक योग्यता क्या है?"
-    assert question["choices"][0] == {"value": "SSC", "label": "माध्यमिक विद्यालय"}
+    assert question["question_id"] == "past_loans_active"
+    assert question["prompt"] == "क्या आपके पास वर्तमान में कोई सक्रिय ऋण है?"
+    assert question["choices"] == [
+        {"value": "PAST_LOANS_ACTIVE", "label": "हाँ"},
+        {"value": "NO_PAST_LOANS", "label": "नहीं"},
+    ]
 
 
 def test_saves_answers_and_returns_first_unanswered_question() -> None:
@@ -84,7 +96,7 @@ def test_saves_answers_and_returns_first_unanswered_question() -> None:
         json={
             "answers": [
                 {"question_id": "age", "value": 30},
-                {"question_id": "employment_type", "value": "SAL"},
+                {"question_id": "pincode", "value": "560002"},
             ]
         },
     )
@@ -94,9 +106,10 @@ def test_saves_answers_and_returns_first_unanswered_question() -> None:
     assert payload["status"] == "COLLECTING_INFORMATION"
     assert payload["answered_questions"] == 2
     assert payload["next_action"] == "answer_questions"
-    assert payload["question"]["question_id"] == "qualifications"
-    assert "30" not in response.text
-    assert "SAL" not in response.text
+    assert payload["question"]["question_id"] == "vehicle"
+    # Strip the random UUID first; it can contain digits by chance.
+    body = response.text.replace(application_id, "")
+    assert "560002" not in body
 
     application = api.get(f"/api/v1/applications/{application_id}").json()
     assert application["status"] == "COLLECTING_INFORMATION"
@@ -115,8 +128,8 @@ def test_completing_questionnaire_moves_to_verification() -> None:
     assert response.json() == {
         "application_id": application_id,
         "status": "AWAITING_VERIFICATION",
-        "answered_questions": 9,
-        "total_questions": 9,
+        "answered_questions": 6,
+        "total_questions": 6,
         "next_action": "verify_identity",
         "question": None,
     }
@@ -129,10 +142,13 @@ def test_completing_questionnaire_moves_to_verification() -> None:
     ("question_id", "value", "message"),
     [
         ("age", 17, "age must be at least 18"),
+        ("age", 61, "age must be at most 60"),
         ("age", "30", "age must be an integer"),
         ("loan_amount", 999, "loan_amount must be at least 1000"),
         ("pincode", "012345", "pincode has an invalid format"),
-        ("employment_type", "UNKNOWN", "employment_type is not an allowed choice"),
+        ("pincode", "56002", "pincode has an invalid format"),
+        ("vehicle", "TVS UNKNOWN MODEL", "vehicle must be chosen from the catalogue"),
+        ("past_loans_active", "MAYBE", "past_loans_active is not an allowed choice"),
     ],
 )
 def test_rejects_invalid_answers(question_id: str, value: object, message: str) -> None:
@@ -204,8 +220,140 @@ def test_answers_cannot_change_after_questionnaire_completion() -> None:
 
     response = api.patch(
         f"/api/v1/applications/{application_id}/answers",
-        json={"answers": [{"question_id": "loan_amount", "value": 600_000}]},
+        json={"answers": [{"question_id": "loan_amount", "value": 90_000}]},
     )
 
     assert response.status_code == 409
     assert response.json()["detail"].endswith("AWAITING_VERIFICATION")
+
+
+def test_vehicle_price_is_asked_before_loan_amount_and_ltv_is_never_asked() -> None:
+    api = client()
+    application_id = create_application(api)
+    asked = []
+    for answer in valid_answers():
+        question = api.get(f"/api/v1/applications/{application_id}/next-question").json()
+        asked.append(question["question"]["question_id"])
+        api.patch(f"/api/v1/applications/{application_id}/answers", json={"answers": [answer]})
+
+    assert asked.index("vehicle_price") == asked.index("loan_amount") - 1
+    assert "ltv" not in asked
+    assert asked == [answer["question_id"] for answer in valid_answers()]
+
+
+def test_rejects_loan_amount_above_vehicle_price_in_one_request() -> None:
+    api = client()
+    application_id = create_application(api)
+
+    response = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={
+            "answers": [
+                {"question_id": "vehicle_price", "value": 400_000},
+                {"question_id": "loan_amount", "value": 400_001},
+            ]
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "loan_amount must not exceed vehicle_price"}
+    progress = api.get(f"/api/v1/applications/{application_id}/next-question").json()
+    assert progress["answered_questions"] == 0
+
+
+def test_ltv_limit_is_checked_against_previously_saved_answers() -> None:
+    api = client()
+    application_id = create_application(api)
+    api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "vehicle_price", "value": 400_000}]},
+    )
+
+    too_high = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "loan_amount", "value": 500_000}]},
+    )
+    lower_price = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "vehicle_price", "value": 300_000}]},
+    )
+    full_value = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "loan_amount", "value": 300_000}]},
+    )
+
+    assert too_high.status_code == 422
+    assert lower_price.status_code == 200
+    assert full_value.status_code == 200
+
+
+def test_vehicle_price_bounds_are_enforced() -> None:
+    api = client()
+    application_id = create_application(api)
+
+    response = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "vehicle_price", "value": 9_999}]},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "vehicle_price must be at least 10000"}
+
+
+def test_legacy_questions_are_not_asked_or_accepted() -> None:
+    api = client()
+    application_id = create_application(api)
+    asked = []
+    for answer in valid_answers():
+        question = api.get(f"/api/v1/applications/{application_id}/next-question").json()
+        asked.append(question["question"]["question_id"])
+        api.patch(f"/api/v1/applications/{application_id}/answers", json={"answers": [answer]})
+
+    assert not LEGACY_QUESTIONS & set(asked)
+    response = client().patch(
+        f"/api/v1/applications/{create_application(api)}/answers",
+        json={"answers": [{"question_id": "gender", "value": "Female"}]},
+    )
+    assert response.status_code == 422
+
+
+def test_vehicle_question_lists_catalogue_choices() -> None:
+    api = client()
+    application_id = create_application(api)
+    api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={
+            "answers": [
+                {"question_id": "age", "value": 30},
+                {"question_id": "pincode", "value": "560002"},
+            ]
+        },
+    )
+
+    question = api.get(f"/api/v1/applications/{application_id}/next-question").json()["question"]
+
+    assert question["question_id"] == "vehicle"
+    assert question["answer_type"] == "choice"
+    values = [choice["value"] for choice in question["choices"]]
+    assert VEHICLE in values
+    assert values == sorted(values)
+    catalogue = api.get("/api/v1/reference/vehicles").json()
+    assert [vehicle["value"] for vehicle in catalogue["vehicles"]] == values
+    assert catalogue["count"] == len(values)
+
+
+def test_vehicle_answer_must_match_catalogue_exactly_after_trimming() -> None:
+    api = client()
+    application_id = create_application(api)
+
+    padded = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "vehicle", "value": f"  {VEHICLE} "}]},
+    )
+    lower = api.patch(
+        f"/api/v1/applications/{create_application(api)}/answers",
+        json={"answers": [{"question_id": "vehicle", "value": VEHICLE.lower()}]},
+    )
+
+    assert padded.status_code == 200
+    assert lower.status_code == 422

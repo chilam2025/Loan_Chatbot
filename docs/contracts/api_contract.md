@@ -2,27 +2,24 @@
 
 ## Purpose
 
-This contract defines the boundary between the customer-facing chatbot and the ABC
-Credit backend. The backend owns application state, deterministic validation, model
-inference, verification status, and audit events. The frontend owns presentation and
-must not reproduce decision logic.
+The backend owns application state, input validation, verification status,
+reference data, model inference, and audit events. The frontend owns
+presentation and must not reproduce decision logic.
 
-The implementation stores application metadata, validated answers, and audit events in
-separate relational tables behind a repository boundary. SQLite supports local
-development and PostgreSQL is configured through `ABC_DATABASE_URL`. The academic
-verification workflow uses a clearly labelled mock provider; model inference is added
-behind the service boundary in a later milestone.
+Application metadata, validated answers, and audit events are stored in
+separate relational tables. SQLite supports local development; PostgreSQL is
+configured through `ABC_DATABASE_URL`. Verification providers in this academic
+prototype are simulations.
 
 ## Conventions
 
-- Base path: `/api/v1`
-- Content type: `application/json`
-- Application identifiers are server-generated UUIDs.
-- Supported locales are `en-IN` and `hi-IN`.
-- Monetary values will be transmitted as integer INR amounts, never formatted strings.
-- Timestamps use ISO 8601 UTC.
+- API base path: `/api/v1` (health, version, and readiness endpoints are at the root).
+- Content type: `application/json`; monetary values are integer INR amounts.
+- Supported locales: `en-IN`, `hi-IN`.
+- Application identifiers are server-generated UUIDs; timestamps are UTC.
 - Applicant PII must not appear in general API logs.
-- The predictive model is the only component allowed to produce the credit decision.
+- The trained model is the only component that produces `APPROVED` or
+  `DECLINED`; `MANUAL_REVIEW` is backend verification policy.
 
 ## Application states
 
@@ -37,144 +34,178 @@ DECLINED
 MANUAL_REVIEW
 ```
 
-State transitions will be enforced by the backend. Clients must not set application
-status directly.
+Clients cannot set application status directly.
 
-## Implemented endpoints
+## System endpoints
 
-### `GET /health`
+### `GET /health`, `GET /version`, `GET /ready`
 
-Returns process availability.
+`/health` reports process availability and `/version` reports the backend
+version. `/ready` reports model and reference-table availability; it returns
+`503` when either is unavailable.
 
-```json
-{"status": "ok"}
-```
-
-### `GET /version`
-
-Returns the backend package version.
-
-```json
-{"version": "0.1.0"}
-```
+## Application and questionnaire endpoints
 
 ### `POST /api/v1/applications`
 
-Starts an application after explicit consent.
-
-Request:
+Creates an application after explicit consent.
 
 ```json
-{
-  "locale": "en-IN",
-  "consent_to_data_processing": true
-}
+{"locale":"en-IN","consent_to_data_processing":true}
 ```
 
-Response: `201 Created`
-
-```json
-{
-  "application_id": "7de6fb54-fdb8-4f58-b055-7aedfc09ba15",
-  "status": "STARTED",
-  "locale": "en-IN",
-  "created_at": "2026-10-28T08:00:00Z",
-  "updated_at": "2026-10-28T08:00:00Z",
-  "next_action": "answer_questions"
-}
-```
-
-False or missing consent returns `422 Unprocessable Entity`.
+Returns `201` with the generated application ID, status, locale, timestamps,
+and next action. Missing or false consent returns `422`.
 
 ### `GET /api/v1/applications/{application_id}`
 
-Returns non-sensitive application metadata. Unknown identifiers return `404 Not Found`.
+Returns non-sensitive application metadata. Unknown IDs return `404`.
 
 ### `GET /api/v1/applications/{application_id}/next-question`
 
-Returns the next deterministic question based on application state and existing answers.
-The prompt and choice labels use the locale selected when the application was created.
-When all required answers have been saved, `question` is `null` and `next_action` is
-`verify_identity`.
+Returns the next localized question, `answered_questions`,
+`total_questions`, application status, and next action. When the six answers
+are complete, `question` is `null` and the application proceeds to
+`AWAITING_VERIFICATION`.
 
 ### `PATCH /api/v1/applications/{application_id}/answers`
 
-Validates and atomically saves one or more applicant answers. It never accepts a
-decision, probability, threshold, model version, or application status from the client.
-Answer values are not echoed in the response.
+Validates and atomically saves answers. Values are not echoed in the response.
+The accepted question IDs, in order, are:
 
-Request:
+1. `age`: integer from 18 through 60 (project eligibility rule).
+2. `pincode`: text matching six Indian PIN digits, first digit 1–9.
+3. `vehicle`: exact `Model_Description` from the catalogue.
+4. `vehicle_price`: integer INR, from 10,000 through 1,000,000.
+5. `loan_amount`: integer INR, from 1,000 through 1,000,000, and not greater
+   than vehicle price.
+6. `past_loans_active`: `PAST_LOANS_ACTIVE` or `NO_PAST_LOANS`.
+
+Example:
 
 ```json
-{
-  "answers": [
-    {"question_id": "age", "value": 30},
-    {"question_id": "qualifications", "value": "GRAD"}
-  ]
-}
+{"answers":[{"question_id":"age","value":30}]}
 ```
 
-The supported applicant question identifiers are `age`, `qualifications`,
-`employment_type`, `pincode`, `gender`, `resident_type`, `net_salary`, `loan_amount`,
-and `past_loans_active`.
+The backend derives LTV as `loan_amount / vehicle_price * 100`, rounded to two
+decimals, and looks up `Final_Tier`, `Make_Code`, `Model_Variant`, and
+`Product_Code`. It never asks the applicant for these fields. Gender,
+qualification, employment type, residence type, and net salary are not
+collected. Invalid answers return `422`; answers cannot be changed after
+verification begins.
 
-The first accepted answer changes the application to `COLLECTING_INFORMATION`. Once
-all required answers are present, it changes to `AWAITING_VERIFICATION`. Answers cannot
-be changed after that transition.
+### `GET /api/v1/reference/vehicles`
+
+Returns the vehicle catalogue. Each vehicle's `value` is the exact string to
+submit for the `vehicle` answer.
+
+```json
+{"count":1,"vehicles":[{"value":"Example model","label":"Example model","make_code":"MAKE","product_code":"MC"}]}
+```
+
+If reference data did not load, the endpoint returns `503`.
+
+## Verification endpoints
 
 ### `GET /api/v1/applications/{application_id}/verification`
 
-Returns non-sensitive mock-verification progress. It never returns a mobile number,
-PAN, stored document name, OTP digest, or internal attempt history.
+Returns non-sensitive verification progress. It does not return mobile number,
+PAN, document name, OTP digest, or attempt history.
 
 ### `POST /api/v1/applications/{application_id}/verification/otp/request`
 
-Creates a five-minute mock OTP challenge with three attempts. The response exposes
-`mock_code` only so the academic demonstration can proceed without an SMS provider.
-Requesting a replacement invalidates any earlier unused challenge. The database stores
-only the mobile number's final four digits and a salted OTP digest.
+Creates a five-minute mock OTP challenge with three attempts. The response
+exposes `mock_code` for the academic demonstration only. Replacement requests
+invalidate the earlier code. The database stores the mobile number's final
+four digits and a salted OTP digest.
 
 ### `POST /api/v1/applications/{application_id}/verification/otp/confirm`
 
-Confirms the mock OTP. Three failed attempts move the application to `MANUAL_REVIEW`.
-Expired, consumed, and replaced challenges return `409 Conflict`.
+Confirms the mock OTP. Three failed attempts move the application to
+`MANUAL_REVIEW`. Expired, consumed, or replaced challenges return `409`.
 
 ### `POST /api/v1/applications/{application_id}/verification/pan`
 
-Validates the official PAN structure of five letters, four digits, and one final letter,
-then records a clearly labelled mock success. This endpoint does not contact the Income
+Validates PAN format and records a mock success. It does not contact the Income
 Tax Department and does not store the PAN value.
 
 ### `POST /api/v1/applications/{application_id}/verification/documents`
 
-Records metadata for a salary slip, bank statement, or income proof. PDF, JPEG, and PNG
-metadata up to 10 MB is accepted. Binary document contents must eventually be handled by
-separate encrypted object storage and are not accepted by this endpoint.
+Records metadata for a salary slip, bank statement, or income proof. PDF, JPEG,
+and PNG metadata up to 10 MB is accepted. Binary file contents are not accepted
+or uploaded. When all verification steps pass, status becomes
+`READY_FOR_REVIEW`.
 
-When mobile, PAN, and document checks are complete, the application moves from
-`AWAITING_VERIFICATION` to `READY_FOR_REVIEW`.
-
-## Planned endpoints
-
-These paths are reserved but are not part of the mock-verification slice.
+## Submission and decision
 
 ### `POST /api/v1/applications/{application_id}/submit`
 
-Checks completeness and verification status, builds the deterministic model feature
-payload, calls the approved predictive model, and records the immutable decision event.
+Submits a `READY_FOR_REVIEW` application once. The backend builds the ten model
+fields from stored answers and reference tables, runs inference, and uses the
+model's packaged threshold: `DECLINED` when
+`probability_declined >= threshold`; otherwise `APPROVED`. Clients cannot
+supply a decision, probability, or threshold. The model does not produce
+`MANUAL_REVIEW`.
+
+The model and reference tables are loaded once during application startup. The
+default model provider is `trained`; set `ABC_MODEL_PROVIDER=mock` only for
+local demonstration or tests. Configure the trained artifact and related
+settings with:
+
+- `ABC_MODEL_PATH` (default `models/catboost_minimal_v2/decision_model.joblib`)
+- `ABC_REFERENCE_TABLES_PATH` (default `models/reference/reference_tables.json`)
+- `ABC_EXPECTED_MODEL_VERSION` (optional, e.g. `catboost-minimal-v2`)
+- `ABC_HIDDEN_EXPLANATION_FACTORS` (defaults to `Location`)
+
+The artifacts are private local files ignored by Git. If model loading fails,
+the API remains available for non-decision operations, `/ready` returns `503`,
+and submission returns `503` without guessing an outcome.
+
+Successful response (`200`):
+
+```json
+{
+  "application_id":"7de6fb54-fdb8-4f58-b055-7aedfc09ba15",
+  "status":"APPROVED",
+  "decision":"APPROVED",
+  "probability_declined":0.0114,
+  "threshold":0.11018,
+  "model_version":"catboost-minimal-v2",
+  "model_provider":"trained",
+  "decided_at":"2026-11-24T08:00:00Z",
+  "next_action":"review_sanction_documents",
+  "explanation":{
+    "factors_raising_decline_score":[{"factor":"Age","strength":"slight"}],
+    "factors_lowering_decline_score":[{"factor":"Vehicle","strength":"moderate"}],
+    "caveat":"Factors describe the model score; they are not causes or advice."
+  }
+}
+```
+
+Probability and threshold are audit fields; do not quote them to applicants.
+The explanation contains grouped factor labels and relative strengths only; it
+omits numeric contributions, raw applicant values, and hidden factors such as
+location. The language model, if used to rephrase factors, must not change the
+decision, quote numbers, give score-improvement advice, or mention gender.
+
+The backend records model version, probability, threshold, inference latency,
+decision, and the ten model fields in the audit record. Pincode is masked to
+its first three digits. On invalid model input or inference failure, the
+application returns to `READY_FOR_REVIEW`; no outcome is guessed.
 
 ### `GET /api/v1/applications/{application_id}/decision`
 
-Returns the applicant-safe decision and next steps. Raw internal model diagnostics and
-PII are excluded from the response.
+Returns the recorded decision in the same shape as the submit response, without
+applicant answers or raw model features. Unknown applications return `404`;
+applications without a decision return `409`.
 
-## Error behaviour
+## Error behavior
 
-- `404`: application or resource not found
-- `409`: invalid application-state transition or duplicate final submission
-- `422`: invalid request data, missing consent, or field validation failure
-- `500`: unexpected internal error with no sensitive implementation details
-- `503`: model or verification dependency temporarily unavailable
+- `404`: application or resource not found.
+- `409`: invalid state transition, duplicate submission, or no decision yet.
+- `422`: invalid request, invalid answer, missing consent, or incomplete application.
+- `503`: model or reference data is unavailable.
+- `500`: unexpected error without sensitive implementation details.
 
-Validation errors identify the affected request field. Errors must never echo PAN,
-document contents, OTP values, or other sensitive applicant data.
+Errors must never echo PAN, document contents, OTP values, or other sensitive
+applicant data.

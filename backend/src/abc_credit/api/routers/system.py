@@ -1,9 +1,9 @@
 """Operational health and version endpoints."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response, status
 
 from abc_credit import __version__
-from abc_credit.schemas.system import HealthResponse, VersionResponse
+from abc_credit.schemas.system import HealthResponse, ReadinessResponse, VersionResponse
 
 router = APIRouter(tags=["system"])
 
@@ -20,3 +20,22 @@ def version() -> VersionResponse:
     """Expose the API version for deployment and client diagnostics."""
 
     return VersionResponse(version=__version__)
+
+
+@router.get("/ready", response_model=ReadinessResponse)
+def ready(request: Request, response: Response) -> ReadinessResponse:
+    """Report whether the model and reference tables loaded; 503 when degraded."""
+
+    decision_service = request.app.state.decision_service
+    model = decision_service.model
+    reference_loaded = decision_service.reference_data is not None
+    is_ready = model is not None and reference_loaded
+    if not is_ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return ReadinessResponse(
+        status="ready" if is_ready else "degraded",
+        model_loaded=model is not None,
+        model_version=model.version if model is not None else None,
+        model_provider=model.provider if model is not None else None,
+        reference_tables_loaded=reference_loaded,
+    )

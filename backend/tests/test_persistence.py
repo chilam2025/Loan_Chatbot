@@ -42,6 +42,7 @@ def test_initial_migration_creates_expected_tables(
         "application_answers",
         "applications",
         "audit_events",
+        "decisions",
         "document_metadata",
         "otp_challenges",
         "verifications",
@@ -60,7 +61,7 @@ def test_application_and_answers_survive_service_restart(
         created.application_id,
         [
             AnswerInput(question_id=QuestionId.AGE, value=32),
-            AnswerInput(question_id=QuestionId.LOAN_AMOUNT, value=250_000),
+            AnswerInput(question_id=QuestionId.LOAN_AMOUNT, value=90_000),
         ],
     )
 
@@ -72,11 +73,11 @@ def test_application_and_answers_survive_service_restart(
     assert restored.status.value == "COLLECTING_INFORMATION"
     assert restored.answers == {
         QuestionId.AGE: 32,
-        QuestionId.LOAN_AMOUNT: 250_000,
+        QuestionId.LOAN_AMOUNT: 90_000,
     }
     assert progress.answered_questions == 2
     assert progress.question is not None
-    assert progress.question.question_id is QuestionId.QUALIFICATIONS
+    assert progress.question.question_id is QuestionId.PINCODE
 
     with sessions() as session:
         events = session.scalars(
@@ -118,3 +119,49 @@ def test_deleting_application_cascades_private_records(
         audit_count = session.scalar(select(func.count()).select_from(AuditEventModel))
     assert answer_count == 0
     assert audit_count == 0
+
+
+def test_latest_migration_adds_decline_score_and_explanation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'decisions.db').as_posix()}"
+    migrate_database(database_url, monkeypatch)
+
+    columns = {
+        column["name"] for column in inspect(create_database_engine(database_url)).get_columns(
+            "decisions"
+        )
+    }
+
+    assert {"probability_declined", "explanation"} <= columns
+
+
+def test_legacy_answers_are_ignored_and_cannot_complete_questionnaire(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'legacy.db').as_posix()}"
+    migrate_database(database_url, monkeypatch)
+    service, sessions = build_service(database_url)
+    created = service.create(locale="en-IN")
+    with sessions.begin() as session:
+        application = session.get(ApplicationModel, str(created.application_id))
+        for question_id, value in {
+            "gender": "Female", "net_salary": 50_000, "qualifications": "GRAD",
+            "employment_type": "SAL", "resident_type": "O",
+        }.items():
+            application.answers.append(
+                ApplicationAnswerModel(
+                    question_id=question_id,
+                    value=value,
+                    created_at=application.created_at,
+                    updated_at=application.created_at,
+                )
+            )
+
+    service.save_answers(created.application_id, [AnswerInput(question_id=QuestionId.AGE, value=30)])
+    record = service.get(created.application_id)
+
+    assert record.answers == {QuestionId.AGE: 30}
+    assert record.status.value == "COLLECTING_INFORMATION"

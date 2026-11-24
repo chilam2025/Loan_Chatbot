@@ -3,7 +3,16 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -44,6 +53,11 @@ class ApplicationModel(Base):
     documents: Mapped[list["DocumentMetadataModel"]] = relationship(
         back_populates="application",
         cascade="all, delete-orphan",
+    )
+    decision: Mapped["DecisionModel | None"] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
 
 
@@ -163,3 +177,38 @@ class DocumentMetadataModel(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     application: Mapped[ApplicationModel] = relationship(back_populates="documents")
+
+
+class DecisionModel(Base):
+    """The single immutable model decision recorded for a submitted application."""
+
+    __tablename__ = "decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('APPROVED', 'DECLINED')",
+            name="ck_decisions_decision",
+        ),
+        CheckConstraint(
+            "approval_probability BETWEEN 0 AND 1",
+            name="ck_decisions_probability",
+        ),
+    )
+
+    application_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    approval_probability: Mapped[float] = mapped_column(Float, nullable=False)
+    # From revision 0004 this is the model's decline cutoff (DECLINED if score >= threshold).
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    probability_declined: Mapped[float | None] = mapped_column(Float)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Factor names and strengths only (no raw values, no numbers), safe to show applicants.
+    explanation: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+    application: Mapped[ApplicationModel] = relationship(back_populates="decision")
