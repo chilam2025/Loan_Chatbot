@@ -138,17 +138,39 @@ async function answerQuestions(page) {
   }
 }
 
-async function completeVerification(page) {
-  await page.locator("#answer").fill("+91 98765-43210");
-  await page.getByRole("button", { name: /continue|आगे बढ़ें/i }).click();
-  await page.locator("#answer").fill("123456");
-  await page.getByRole("button", { name: /continue|आगे बढ़ें/i }).click();
-  await page.locator("#answer").fill("ABCDE1234F");
-  await page.getByRole("button", { name: /continue|आगे बढ़ें/i }).click();
-  await page.locator("#answer").setInputFiles({
+async function completeVerification(page, locale = "en") {
+  const labels = locale === "hi"
+    ? {
+      mobile: "आपका 10 अंकों का मोबाइल नंबर क्या है?",
+      otp: "हमारे भेजे गए 6 अंकों का कोड दर्ज करें।",
+      pan: "आपका PAN क्या है?",
+      document: "कृपया आय का प्रमाण, जैसे वेतन पर्ची, अपलोड करें।",
+      review: "आपके आवेदन की जानकारी",
+    }
+    : {
+      mobile: "What is your 10-digit mobile number?",
+      otp: "Enter the 6-digit code we sent.",
+      pan: "What is your PAN?",
+      document: "Please upload proof of income, such as a salary slip.",
+      review: "Your application details",
+    };
+  const continueButton = page.getByRole("button", { name: /continue|आगे बढ़ें/i });
+
+  await expect(page.getByLabel(labels.mobile)).toBeVisible();
+  await page.getByLabel(labels.mobile).fill("+91 98765-43210");
+  await continueButton.click();
+  await expect(page.getByLabel(labels.otp)).toBeVisible();
+  await page.getByLabel(labels.otp).fill("123456");
+  await continueButton.click();
+  await expect(page.getByLabel(labels.pan)).toBeVisible();
+  await page.getByLabel(labels.pan).fill("ABCDE1234F");
+  await continueButton.click();
+  await expect(page.getByLabel(labels.document)).toBeVisible();
+  await page.getByLabel(labels.document).setInputFiles({
     name: "salary-slip.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test metadata only"),
   });
-  await page.getByRole("button", { name: /continue|आगे बढ़ें/i }).click();
+  await continueButton.click();
+  await expect(page.getByRole("heading", { name: labels.review })).toBeVisible();
 }
 
 test("approved flow masks mobile and shows safe explanation and next steps", async ({ page }) => {
@@ -191,7 +213,7 @@ test("OTP policy routes to manual review without calling model decision", async 
 
 test("Hindi flow localizes active-loan explanation and next step", async ({ page }) => {
   await mockApi(page, { decision: "DECLINED" });
-  await beginApplication(page, "hi"); await answerQuestions(page); await completeVerification(page);
+  await beginApplication(page, "hi"); await answerQuestions(page); await completeVerification(page, "hi");
   await page.getByRole("button", { name: "आवेदन जमा करें" }).click();
   const result = page.locator("#response-form");
   await expect(result.getByText("सक्रिय ऋण की स्थिति")).toBeVisible();
@@ -249,6 +271,7 @@ test("application resumes at its unanswered question after reload", async ({ pag
 test("formatted +91 mobile fits the input and is normalized before submission", async ({ page }) => {
   const api = await mockApi(page);
   await beginApplication(page); await answerQuestions(page);
+  await expect(page.getByLabel("What is your 10-digit mobile number?")).toBeVisible();
   const phone = page.locator("#answer");
   await expect(phone).toHaveAttribute("maxlength", "16");
   await phone.fill("+91 98765-43210");
