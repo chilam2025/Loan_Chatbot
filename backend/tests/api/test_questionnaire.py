@@ -357,3 +357,20 @@ def test_vehicle_answer_must_match_catalogue_exactly_after_trimming() -> None:
 
     assert padded.status_code == 200
     assert lower.status_code == 422
+
+
+def test_mis_encoded_vehicle_names_get_readable_labels_but_exact_values() -> None:
+    garbled = "JUPITER ZX BSVI \u00e2\u20ac\u201c ZX DRUM"
+    catalogue = client().get("/api/v1/reference/vehicles").json()["vehicles"]
+    entry = next(vehicle for vehicle in catalogue if vehicle["value"] == garbled)
+
+    assert entry["label"] == "JUPITER ZX BSVI - ZX DRUM"
+    assert all(vehicle["label"].isascii() for vehicle in catalogue)
+
+    api = client()
+    application_id = create_application(api)
+    saved = api.patch(
+        f"/api/v1/applications/{application_id}/answers",
+        json={"answers": [{"question_id": "vehicle", "value": garbled}]},
+    )
+    assert saved.status_code == 200

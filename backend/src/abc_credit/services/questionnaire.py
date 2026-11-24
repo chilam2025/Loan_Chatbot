@@ -128,7 +128,7 @@ def _choices(
         if reference is None:
             raise ReferenceDataUnavailableError("vehicle catalogue is not loaded")
         # Vehicle names are product names, so the label is the same in every locale.
-        return [QuestionChoice(value=v.value, label=v.value) for v in reference.vehicles]
+        return [QuestionChoice(value=v.value, label=v.label) for v in reference.vehicles]
     return [
         QuestionChoice(value=choice.value, label=choice.labels[locale])
         for choice in definition.choices

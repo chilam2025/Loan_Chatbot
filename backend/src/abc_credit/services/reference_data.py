@@ -25,6 +25,21 @@ class ReferenceDataUnavailableError(RuntimeError):
     """Raised when the reference tables were not loaded at startup."""
 
 
+def display_label(value: str) -> str:
+    """Readable name for applicants.
+
+    Some catalogue names in the training data are mis-encoded (UTF-8 read as Windows-1252,
+    e.g. "â€“" for an en dash). The model was trained on those exact strings, so the
+    ``value`` must stay unchanged; only the label shown to applicants is repaired.
+    """
+
+    try:
+        repaired = value.encode("cp1252").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        repaired = value
+    return repaired.replace("\u2013", "-").replace("\u2014", "-")
+
+
 @dataclass(frozen=True)
 class Vehicle:
     """One catalogue entry; ``value`` is the exact Model_Description the model expects."""
@@ -33,6 +48,10 @@ class Vehicle:
     make_code: str
     model_variant: str
     product_code: str
+
+    @property
+    def label(self) -> str:
+        return display_label(self.value)
 
 
 class ReferenceData:

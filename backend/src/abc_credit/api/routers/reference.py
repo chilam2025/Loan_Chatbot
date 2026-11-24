@@ -25,7 +25,7 @@ def list_vehicles(service: ApplicationServiceDependency) -> VehicleCatalogueResp
     vehicles = [
         VehicleOption(
             value=vehicle.value,
-            label=vehicle.value,
+            label=vehicle.label,
             make_code=vehicle.make_code,
             product_code=vehicle.product_code,
         )
