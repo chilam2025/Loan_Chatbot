@@ -127,9 +127,12 @@ async function beginApplication(page, locale = "en") {
 }
 
 async function answerQuestions(page) {
-  for (const value of ["30", "110001", "RAW-VALUE", "90000", "60000", "NO_PAST_LOANS"]) {
-    const input = page.locator("#answer");
-    if (await input.evaluate((element) => element.tagName === "SELECT")) await input.selectOption(value);
+  const values = ["30", "110001", "RAW-VALUE", "90000", "60000", "NO_PAST_LOANS"];
+  for (const [index, value] of values.entries()) {
+    const question = questions[index];
+    await expect(page.locator(".field-label")).toHaveText(question.prompt);
+    const input = page.getByLabel(question.prompt);
+    if (question.answer_type === "choice") await input.selectOption(value);
     else await input.fill(value);
     await page.getByRole("button", { name: /continue|आगे बढ़ें/i }).click();
   }
