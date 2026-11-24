@@ -36,6 +36,33 @@ applicant-level split files.
 The API is served under `/api/v1`; interactive OpenAPI documentation is available
 at `/docs` while the server is running.
 
+## Model and configuration
+
+The decision API uses Person 1's six-question model (`catboost-minimal-v2`). The model
+artefact and reference tables are shared privately in `model_handoff.zip` and are
+excluded from Git. Unzip it in the repository root so these paths exist:
+
+```text
+models/catboost_minimal_v2/decision_model.joblib
+models/catboost_minimal_v2/metadata.json
+models/reference/reference_tables.json
+```
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ABC_MODEL_PROVIDER` | `trained` | `trained` for the real model; `mock` only for tests and demos |
+| `ABC_MODEL_PATH` | `models/catboost_minimal_v2/decision_model.joblib` | Model artefact |
+| `ABC_REFERENCE_TABLES_PATH` | `models/reference/reference_tables.json` | Vehicle catalogue and pincode tiers |
+| `ABC_EXPECTED_MODEL_VERSION` | unset | Refuse any other model version, e.g. `catboost-minimal-v2` |
+| `ABC_HIDDEN_EXPLANATION_FACTORS` | `Location` | Factors removed from applicant-facing explanations |
+| `ABC_CORS_ORIGINS` | localhost and 127.0.0.1 on ports 5173, 5500, 8080 | Browser origins allowed to call the API |
+| `ABC_LOG_LEVEL` | `INFO` | Level for decision and startup logs |
+| `ABC_DATABASE_URL` | `backend/data/abc_credit.db` (SQLite) | Database connection |
+
+If the model or tables cannot be loaded, the API still starts: `GET /ready` returns
+`503` and submissions return `503` until the files are in place and the server is
+restarted. See `docs/contracts/api_contract.md` for endpoints and response shapes.
+
 ## Database
 
 Local development uses `backend/data/abc_credit.db`, which is excluded from Git because

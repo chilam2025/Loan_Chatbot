@@ -19,7 +19,12 @@ from abc_credit.services.decision_service import DecisionService
 from abc_credit.services.verification_service import VerificationService
 
 CORS_ORIGINS_ENV = "ABC_CORS_ORIGINS"
-DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+# Local frontend servers: Vite (5173), VS Code Live Server (5500), python -m http.server (8080).
+DEFAULT_CORS_ORIGINS = ",".join(
+    f"http://{host}:{port}"
+    for port in (5173, 5500, 8080)
+    for host in ("localhost", "127.0.0.1")
+)
 
 
 def configure_logging() -> None:

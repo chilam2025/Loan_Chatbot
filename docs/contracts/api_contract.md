@@ -10,8 +10,10 @@ must not reproduce decision logic.
 The implementation stores application metadata, validated answers, and audit events in
 separate relational tables behind a repository boundary. SQLite supports local
 development and PostgreSQL is configured through `ABC_DATABASE_URL`. The academic
-verification workflow uses a clearly labelled mock provider. Model inference sits behind
-the service boundary and currently uses a clearly labelled deterministic mock model.
+verification workflow uses a clearly labelled mock provider. Model inference uses Person 1's
+packaged six-question model (`catboost-minimal-v2`, see
+`docs/model/model_contract_minimal.md`), loaded once at startup. A clearly labelled
+deterministic mock (`ABC_MODEL_PROVIDER=mock`) exists for automated tests only.
 
 ## Conventions
 
@@ -58,6 +60,44 @@ Returns the backend package version.
 {"version": "0.1.0"}
 ```
 
+### `GET /ready`
+
+Reports whether the model and reference tables loaded at startup. Returns `200` when
+ready and `503` when degraded; the chatbot should show a "service unavailable, please
+try later" message rather than starting an application when it receives `503`.
+
+```json
+{
+  "status": "ready",
+  "model_loaded": true,
+  "model_version": "catboost-minimal-v2",
+  "model_provider": "trained",
+  "reference_tables_loaded": true
+}
+```
+
+### `GET /api/v1/reference/vehicles`
+
+Returns the vehicle catalogue from `models/reference/reference_tables.json`, sorted by
+name. Show `label` to the applicant and send `value` back unchanged as the `vehicle`
+answer. Four values in the source data are mis-encoded (for example `â€“` in place of a
+dash); the model was trained on those exact strings, so `value` keeps them while `label`
+is repaired. Returns `503` if the reference tables are not loaded.
+
+```json
+{
+  "count": 87,
+  "vehicles": [
+    {
+      "value": "APACHE 200 4V 1CH - R MODE BSVI",
+      "label": "APACHE 200 4V 1CH - R MODE BSVI",
+      "make_code": "APACHE",
+      "product_code": "MC"
+    }
+  ]
+}
+```
+
 ### `POST /api/v1/applications`
 
 Starts an application after explicit consent.
@@ -97,6 +137,48 @@ The prompt and choice labels use the locale selected when the application was cr
 When all required answers have been saved, `question` is `null` and `next_action` is
 `verify_identity`.
 
+Questions are asked in this order:
+
+| Order | `question_id` | `answer_type` | Validation |
+|---|---|---|---|
+| 1 | `age` | `integer` | 18–60 (policy range stated in the project brief) |
+| 2 | `pincode` | `text` | Pattern `^[1-9][0-9]{5}$` |
+| 3 | `vehicle` | `choice` | Exact `value` from the vehicle catalogue (87 choices) |
+| 4 | `vehicle_price` | `integer` | INR 10,000–1,000,000 |
+| 5 | `loan_amount` | `integer` | INR 1,000–1,000,000 and not above `vehicle_price` |
+| 6 | `past_loans_active` | `choice` | `PAST_LOANS_ACTIVE` (Yes) or `NO_PAST_LOANS` (No) |
+
+The response carries `prompt`, `answer_type`, `required`, `choices` (each with `value`
+and localized `label`), `minimum`, `maximum` and `pattern`, so the chatbot renders every
+question from server data. Gender, qualification, employment type, residence type and
+net salary are not asked: the model does not use them, and gender is deliberately
+excluded.
+
+Response example:
+
+```json
+{
+  "application_id": "7de6fb54-fdb8-4f58-b055-7aedfc09ba15",
+  "status": "COLLECTING_INFORMATION",
+  "answered_questions": 5,
+  "total_questions": 6,
+  "next_action": "answer_questions",
+  "question": {
+    "question_id": "past_loans_active",
+    "prompt": "Do you currently have any active loans?",
+    "answer_type": "choice",
+    "required": true,
+    "choices": [
+      {"value": "PAST_LOANS_ACTIVE", "label": "Yes"},
+      {"value": "NO_PAST_LOANS", "label": "No"}
+    ],
+    "minimum": null,
+    "maximum": null,
+    "pattern": null
+  }
+}
+```
+
 ### `PATCH /api/v1/applications/{application_id}/answers`
 
 Validates and atomically saves one or more applicant answers. It never accepts a
@@ -109,17 +191,16 @@ Request:
 {
   "answers": [
     {"question_id": "age", "value": 30},
-    {"question_id": "qualifications", "value": "GRAD"}
+    {"question_id": "pincode", "value": "560002"}
   ]
 }
 ```
 
-The supported applicant question identifiers are `age`, `qualifications`,
-`employment_type`, `pincode`, `gender`, `resident_type`, `net_salary`, `vehicle_price`,
-`loan_amount`, and `past_loans_active`. A request may contain at most one answer per
-question.
+The supported question identifiers are `age`, `pincode`, `vehicle`, `vehicle_price`,
+`loan_amount` and `past_loans_active`. A request may contain at most one answer per
+question. Monetary answers and `age` are JSON integers; the other answers are strings.
 
-`vehicle_price` is the on-road price in INR (10,000–50,000,000). Loan-to-value is never
+`vehicle_price` is the on-road price in INR. Loan-to-value is never
 asked: the backend derives `LTV = loan_amount / vehicle_price × 100` (percentage, two
 decimals) for the model. When both amounts are known, including one saved in an earlier
 request, a `loan_amount` above `vehicle_price` is rejected with `422` and
@@ -164,21 +245,24 @@ When mobile, PAN, and document checks are complete, the application moves from
 
 ### `POST /api/v1/applications/{application_id}/submit`
 
-Submits a `READY_FOR_REVIEW` application exactly once. The backend maps the stored
-answers to the model's training columns, calls the predictive model loaded at startup,
-and applies the deterministic rule `approval_probability >= threshold → APPROVED`,
-otherwise `DECLINED`. The threshold comes from `ABC_DECISION_THRESHOLD` (default `0.5`,
-exclusive range 0–1). Any request body is ignored; clients and language models cannot
-supply or override a decision, probability, or threshold.
+Submits a `READY_FOR_REVIEW` application exactly once. The backend builds the model's ten
+contract fields with Person 1's `build_minimal_payload` (deriving LTV, `Final_Tier` from
+the pincode, and the make, variant and product code from the vehicle), scores them with
+`predict_applications`, and records the model's own decision: `DECLINED` when
+`probability_declined >= threshold`, otherwise `APPROVED`. The threshold is the locked
+cutoff packaged with the model (0.11018 for `catboost-minimal-v2`). Any request body is
+ignored; clients and language models cannot supply or override a decision, probability
+or threshold. `MANUAL_REVIEW` is a backend policy (for example after failed OTP
+attempts), never a model output.
 
-The application moves `READY_FOR_REVIEW → SUBMITTED → APPROVED | DECLINED`. Until
-Person 1's trained model is integrated, a deterministic mock is used and identified by
-`model_provider: "mock"`.
+The application moves `READY_FOR_REVIEW → SUBMITTED → APPROVED | DECLINED`.
 
-The model is loaded once at startup and validated before the API accepts traffic: its
-version must be a short identifier, its provider must be `mock` or `trained`, and when
-`ABC_EXPECTED_MODEL_VERSION` is set the loaded version must match it exactly, otherwise
-the service refuses to start.
+The model and reference tables are loaded once at startup from `ABC_MODEL_PATH`
+(default `models/catboost_minimal_v2/decision_model.joblib`) and
+`ABC_REFERENCE_TABLES_PATH` (default `models/reference/reference_tables.json`). If either
+fails to load, the API still starts, `GET /ready` returns `503`, and submissions return
+`503` without changing the application. When `ABC_EXPECTED_MODEL_VERSION` is set, a
+model with a different version is refused.
 
 Response: `200 OK`
 
@@ -187,30 +271,53 @@ Response: `200 OK`
   "application_id": "7de6fb54-fdb8-4f58-b055-7aedfc09ba15",
   "status": "APPROVED",
   "decision": "APPROVED",
-  "approval_probability": 0.8455,
-  "threshold": 0.5,
-  "model_version": "mock-0.1.0",
-  "model_provider": "mock",
-  "decided_at": "2026-11-04T08:00:00Z",
-  "next_action": "review_sanction_documents"
+  "probability_declined": 0.0195,
+  "threshold": 0.11018,
+  "model_version": "catboost-minimal-v2",
+  "model_provider": "trained",
+  "decided_at": "2026-11-24T08:00:00Z",
+  "next_action": "review_sanction_documents",
+  "explanation": {
+    "factors_raising_decline_score": [
+      {"factor": "Vehicle", "strength": "moderate"}
+    ],
+    "factors_lowering_decline_score": [
+      {"factor": "Loan size relative to vehicle price", "strength": "strong"}
+    ],
+    "caveat": "These factors describe how the model scored this application compared with a typical one, using historical decisions. They are not causes or advice."
+  }
 }
 ```
 
+`probability_declined` and `threshold` are returned for audit and reporting only; the
+chatbot must not show them to applicants.
+
+`explanation` comes from Person 1's `explain_application`. It contains grouped factor
+names and strengths (`strong`, `moderate`, `slight`) only: no raw values and no numbers.
+`Location` is removed by default because it can act as a proxy for protected
+characteristics; `ABC_HIDDEN_EXPLANATION_FACTORS` (comma-separated) changes this.
+`explanation` is `null` if the explainer fails; the decision is unaffected. A language
+model may only rephrase these factors. It must not change the decision, quote numbers,
+advise on improving a score, or mention gender.
+
 - `404`: unknown application.
 - `409`: application is not `READY_FOR_REVIEW`, or has already been submitted.
-- `422`: required answers are missing, e.g.
-  `"Application is missing required answers: vehicle_price"`. The status is unchanged.
-- `503`: the model failed or returned a probability outside 0–1. The application returns
-  to `READY_FOR_REVIEW` and the client may retry; no outcome is guessed.
+- `422`: required answers are missing, or stored answers cannot form a valid model
+  payload (for example a vehicle no longer in the catalogue). The status is unchanged.
+- `503`: the model or reference tables are not loaded, the model failed, or it returned
+  a probability outside 0–1. The application returns to `READY_FOR_REVIEW` and the
+  client may retry; no outcome is guessed.
 
-Each decision stores the model version, probability, threshold, and inference latency in
-milliseconds in an audit event. Applicant answers are not copied into the event.
+Each decision is written to an audit event and to the application log with the model
+version, threshold, `probability_declined`, decision, inference latency in milliseconds,
+and the ten model fields, with the pincode reduced to its first three digits
+(`560XXX`). Raw answers are stored only in the answers table.
 
 ### `GET /api/v1/applications/{application_id}/decision`
 
-Returns the recorded decision in the same shape as the submit response. Applicant
-answers, model features, latency, and PII are excluded. Unknown applications return
-`404`; applications without a decision return `409`.
+Returns the recorded decision, including `explanation`, in the same shape as the submit
+response. Applicant answers, model features, latency and PII are excluded. Unknown
+applications return `404`; applications without a decision return `409`.
 
 ## Error behaviour
 
