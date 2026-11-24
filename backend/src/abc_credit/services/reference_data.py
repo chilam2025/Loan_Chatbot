@@ -34,6 +34,11 @@ class Vehicle:
     model_variant: str
     product_code: str
 
+    @property
+    def label(self) -> str:
+        """Readable applicant label while ``value`` keeps the model's exact source key."""
+        return self.value.replace("â€“", "–")
+
 
 class ReferenceData:
     """Read-only view over ``reference_tables.json``."""

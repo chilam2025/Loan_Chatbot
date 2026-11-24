@@ -145,8 +145,8 @@ latency. Never log raw answers beyond what the privacy rules allow.
 - Fairness is not established. Validation recall: women 38.2%, men 39.7%;
   predicted decline rate 12.1% and 12.3%. Recall for resident type R is 17.1%
   against 40.5% for type O (791 applications).
-- Age: the backend currently accepts 18 to 70; confirm the policy range with
-  the brief before enforcing it.
+- Age: the backend enforces 18 to 60, matching the project brief. This is a
+  product eligibility rule, not a model-derived threshold.
 
 ## Dependencies
 
