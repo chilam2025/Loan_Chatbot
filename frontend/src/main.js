@@ -14,6 +14,18 @@ import {
 // Steps: welcome → consent → question (repeated, driven by the backend) → mobile → otp
 // → pan → document → review → decided. The backend decides every outcome.
 const CURRENCY_QUESTIONS = new Set(["net_salary", "vehicle_price", "loan_amount"]);
+const SAFE_EXPLANATION_FACTORS = new Map([
+  ["Loan size relative to vehicle price", "factorLoanVehicle"],
+  ["Loan amount", "factorLoanAmount"],
+  ["Age", "factorAge"],
+  ["Existing active loan", "factorActiveLoan"],
+  ["Vehicle", "factorVehicle"],
+]);
+const EXPLANATION_STRENGTHS = new Map([
+  ["slight", "factorStrengthSlight"],
+  ["moderate", "factorStrengthModerate"],
+  ["strong", "factorStrengthStrong"],
+]);
 const dictionaries = { en, hi };
 const state = {
   language: readLanguage(),
@@ -59,6 +71,8 @@ function updateChrome() {
   $(".progress-value").style.width = `${percent}%`;
   $("#progress-label").textContent = t(state.step === "welcome" ? "start" : "progress");
   $("#language").value = state.language;
+  $("#language").disabled = Boolean(state.applicationId);
+  $("#language").title = state.applicationId ? t("languageLocked") : "";
 }
 
 function bot(text) {
@@ -71,6 +85,7 @@ function applicant(text) {
   const item = document.createElement("p"); item.className = "message applicant-message bubble"; item.textContent = text;
   messages.append(item); item.scrollIntoView({ block: "nearest" });
 }
+function maskMobile(number) { return `••••••${number.slice(-4)}`; }
 function button(label, action, className = "primary-button") {
   const control = document.createElement("button"); control.type = "button"; control.className = className;
   control.textContent = label; control.disabled = state.busy; control.addEventListener("click", action); return control;
@@ -113,6 +128,7 @@ function renderQuestionInput(question) {
       if (question.question_id === "pincode") { input.inputMode = "numeric"; input.maxLength = 6; }
     }
   }
+  if (state.draftAnswer !== undefined) input.value = state.draftAnswer;
   const prefix = CURRENCY_QUESTIONS.has(question.question_id) ? t("currencyPrefix") : null;
   field(question.prompt, t(`${question.question_id}Help`) === `${question.question_id}Help` ? "" : t(`${question.question_id}Help`), input, prefix);
 }
@@ -130,8 +146,10 @@ function renderForm() {
       );
       return;
     case "consentDeclined":
-    case "decided":
       form.append(button(t("startAgain"), restart));
+      return;
+    case "decided":
+      renderDecision();
       return;
     case "question":
       renderQuestionInput(state.question); break;
@@ -169,6 +187,65 @@ function renderReview() {
     const detail = document.createElement("dd"); detail.textContent = display; list.append(term, detail);
   }
   form.append(heading, notice, list, button(state.busy ? t("working") : t("submit"), submit));
+}
+
+function renderDecision() {
+  const result = state.decision;
+  const heading = document.createElement("h2");
+  heading.className = "review-heading";
+  heading.textContent = t("resultTitle");
+  const outcome = document.createElement("p");
+  outcome.className = "review-notice decision-result";
+  outcome.textContent = t({
+    APPROVED: "approved",
+    DECLINED: "declinedDecision",
+    MANUAL_REVIEW: "manualReview",
+  }[result?.decision] ?? "decisionUnknown");
+  const caveat = document.createElement("p");
+  caveat.className = "review-notice";
+  caveat.textContent = t("prototypeDecisionNote");
+  form.append(heading, outcome, caveat);
+
+  const explanation = result?.explanation;
+  const groups = [
+    [explanation?.factors_raising_decline_score ?? [], "factorsRaising"],
+    [explanation?.factors_lowering_decline_score ?? [], "factorsLowering"],
+  ].map(([items, label]) => [
+    items.filter((item) => SAFE_EXPLANATION_FACTORS.has(item.factor) && EXPLANATION_STRENGTHS.has(item.strength)),
+    label,
+  ]).filter(([items]) => items.length);
+
+  if (groups.length) {
+    const factorsHeading = document.createElement("h3");
+    factorsHeading.className = "review-heading explanation-heading";
+    factorsHeading.textContent = t("explanationTitle");
+    form.append(factorsHeading);
+    for (const [items, label] of groups) {
+      const group = document.createElement("section");
+      group.className = "factor-group";
+      const groupHeading = document.createElement("h4");
+      groupHeading.textContent = t(label);
+      const list = document.createElement("ul");
+      for (const item of items) {
+        const row = document.createElement("li");
+        row.textContent = `${t(SAFE_EXPLANATION_FACTORS.get(item.factor))}: ${t(EXPLANATION_STRENGTHS.get(item.strength))}`;
+        list.append(row);
+      }
+      group.append(groupHeading, list);
+      form.append(group);
+    }
+  }
+  const nextActionKey = {
+    review_sanction_documents: "nextApproved",
+    view_decision: "nextDeclined",
+  }[result?.next_action];
+  if (nextActionKey) {
+    const nextStep = document.createElement("p");
+    nextStep.className = "review-notice next-step";
+    nextStep.textContent = t(nextActionKey);
+    form.append(nextStep);
+  }
+  form.append(button(t("startAgain"), restart, "secondary-button"));
 }
 
 function refresh() { updateChrome(); renderForm(); }
@@ -210,6 +287,7 @@ async function handleAnswer(raw) {
   const value = question.answer_type === "integer" ? Number(raw) : raw;
   if (question.answer_type === "integer" && !Number.isInteger(value)) throw new Error(t("wholeNumber"));
   const progress = await answerQuestion(state.applicationId, question.question_id, value);
+  state.draftAnswer = undefined;
   const display = String(displayAnswer(question, raw));
   applicant(display);
   state.answers.push({ prompt: question.prompt, display });
@@ -222,11 +300,16 @@ async function handleVerification(input) {
     const mobile = input.value.replace(/[\s-]/g, "").replace(/^(\+?91|0)(?=\d{10}$)/, "");
     if (!/^[6-9]\d{9}$/.test(mobile)) throw new Error(t("mobileError"));
     state.challenge = await requestOtp(state.applicationId, mobile);
-    applicant(mobile); state.step = "otp"; bot(t("otp"));
+    applicant(maskMobile(mobile)); state.step = "otp"; bot(t("otp"));
   } else if (state.step === "otp") {
     const result = await confirmOtp(state.applicationId, state.challenge.challenge_id, input.value.trim());
     applicant("••••••");
-    if (result.status === "MANUAL_REVIEW") { state.step = "decided"; bot(t("manualReview")); return; }
+    if (result.status === "MANUAL_REVIEW") {
+      state.decision = { decision: "MANUAL_REVIEW" };
+      state.step = "decided";
+      bot(t("manualReview"));
+      return;
+    }
     state.step = "pan"; bot(t("pan"));
   } else if (state.step === "pan") {
     const pan = input.value.trim().toUpperCase();
@@ -245,14 +328,13 @@ function submit() {
   return withBusy(async () => {
     const decision = await submitApplication(state.applicationId);
     state.decision = decision; state.step = "decided";
-    bot(decision.decision === "APPROVED" ? t("approved") : t("declinedDecision"));
-    bot(`${t("decisionModel")} ${decision.model_version} (${decision.model_provider}).`);
+    bot(t("resultTitle"));
   });
 }
 
 function restart() {
   messages.replaceChildren();
-  Object.assign(state, { step: "welcome", applicationId: null, question: null, progress: { answered: 0, total: 0 }, answers: [], challenge: null, decision: null });
+  Object.assign(state, { step: "welcome", applicationId: null, question: null, progress: { answered: 0, total: 0 }, answers: [], challenge: null, decision: null, draftAnswer: undefined });
   bot(t("welcome")); refresh();
 }
 
@@ -261,7 +343,8 @@ form.addEventListener("submit", (event) => {
   const input = $("#answer");
   if (!input) return;
   const raw = input.type === "file" ? "file" : input.value.trim();
-  if (!raw) { showError(t("validationSummary")); input.focus(); return; }
+  if (!raw || !input.checkValidity()) { showError(t("validationSummary")); input.focus(); return; }
+  if (state.step === "question") state.draftAnswer = raw;
   withBusy(async () => {
     try {
       if (state.step === "question") await handleAnswer(raw);

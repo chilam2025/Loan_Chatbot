@@ -1,80 +1,90 @@
 # Loan application conversation flow
 
-**Status:** Draft for review by Persons 1 and 2. The current repository has no
-model contract or API contract, so field selection, request shapes, and server
-validation messages remain subject to those reviews.
+**Status:** Integrated with the `catboost-minimal-v2` API on
+`person2/six-question-api`. The model questionnaire has six applicant
+questions. The prototype then runs separate simulated identity and income
+verification steps before model submission.
 
 ## Conversation principles
 
-- Ask one clear question at a time and show progress through the application.
-- Explain why sensitive information is needed before requesting it.
-- Let applicants go back and edit answers before submission.
-- Treat answers as input only. The backend validates values and returns the
-  decision; the conversation must not infer or change credit eligibility.
-- Explain that OTP, PAN, DigiLocker, and document checks in this academic
-  prototype are simulations, not connections to government services.
-- Use the server's application ID and state. Do not create a decision locally.
+- Ask one question at a time and use the server's progress count.
+- Collect consent before creating an application or collecting answers.
+- Ask only the six model-contract questions. Do not ask for gender,
+  qualification, employment type, residence type, or net salary.
+- Keep pincode as text. Use exact vehicle catalogue values from the API.
+- The backend validates answers, derives LTV and lookup fields, and owns the
+  decision. The browser does not derive or change an outcome.
+- Explain that OTP, PAN, and document steps are simulations. The document
+  endpoint records metadata only; it does not accept document contents.
+- Describe the model output as an estimate of historical decisions, not a real
+  lending decision. `MANUAL_REVIEW` is a backend verification policy.
 
 ## Journey
 
-| Stage | Chat experience | Data / action | Branching and safeguards |
+| Stage | Chat experience | Data / action | Safeguards |
 |---|---|---|---|
-| Welcome | Introduce the vehicle-loan application and estimated time. | Start application through the API. | Explain that a final result comes from the backend and that some applications may need manual review. |
-| Consent | Explain the information collected, prototype verification, and use for an application decision. Ask the applicant to agree before continuing. | Record consent through the API. | If consent is declined, end politely without collecting application details. |
-| Eligibility | Ask age and residence details required by the agreed model and product rules. | Age, resident type, six-digit Indian pincode. | Validate format deterministically. Eligibility rules and age limits must come from the backend contract. |
-| Employment and income | Ask employment type, qualification where required, and monthly net income. | Employment type, qualification, net salary. | Show localized INR input. Request clarification for missing or invalid values; do not estimate income. |
-| Vehicle and loan | Ask for vehicle make, model, variant, product, vehicle price or applicable tier, and requested loan amount. | Product code, make, model description, model variant, final tier, loan amount, vehicle price. | Backend calculates LTV. Do not ask for LTV as an applicant answer. Skip vehicle fields that the API/model contract derives. |
-| Additional details | Ask for gender and active past-loan information only if required and approved by the model and product contract. | Gender and active past loans, if approved. | Explain optionality only if the backend confirms the field is optional. Never invent categories. |
-| Verification | Explain each requested check, then present the prototype OTP, PAN, document, address, income, and DigiLocker-consent steps as applicable. | Submit verification actions and display returned statuses. | Clearly label simulations. Never request or display OTP values in logs; use backend statuses (`PENDING`, `VERIFIED`, `FAILED`, `REQUIRES_REVIEW`). |
-| Application review | Summarize personal, employment, vehicle, loan, and verification information. | Read current answers and server-calculated LTV. | Provide edit controls that return to the relevant question. Require explicit confirmation before submission. |
-| Submission | Confirm the applicant is ready to submit. | Submit once through the API. | Disable repeat submission while pending and handle duplicate-submit responses safely. |
-| Decision | Show the returned approved, declined, or manual-review outcome. | Render backend decision and approved amount/next action if supplied. | Do not infer reasons for declines. Show prototype sanction documents only when supplied and label them prototypes. |
-| Next steps | Explain the next action returned for the outcome, plus support/contact details from approved configuration. | No local decision logic. | Manual review explains that more verification is needed; decline wording stays neutral and offers the available review/contact route. |
+| Welcome | Introduce the vehicle-loan application and prototype. | None. | Do not promise approval or a real lender decision. |
+| Consent | Explain the application data use and simulated verification. | On Yes, create an application with the selected locale and consent. | On No, stop without collecting application details. |
+| Six-question questionnaire | Render localized prompts and answer controls from the API. | Age, pincode, catalogue vehicle, vehicle price, requested loan amount, active-loan status. | Backend supplies order, options, limits, and validation. Do not ask excluded demographic or income fields. |
+| Verification | Collect a mobile number, confirm the simulated OTP, validate PAN format, and record income-document metadata. | Use the verification endpoints and display their returned statuses. | Never claim government verification. The OTP is mocked; the PAN is not stored; the file itself is not uploaded. OTP values must not enter logs. |
+| Review | Show the answers and ask the applicant to confirm submission. | Submit exactly once through the backend. | Disable repeat submission while pending. Preserve the review screen if the API rejects the request. |
+| Decision | Show `APPROVED`, `DECLINED`, or a separate manual-review outcome. | The submit response includes the recorded decision; GET decision can retrieve it later. | Do not display probability, threshold, or numeric feature contributions. Use only allow-listed factor labels and strengths. |
+| Start again | Offer a new application. | Clear client state and require new consent. | Do not reuse previous answers or application identifiers. |
 
-## Question wording and input contract (draft)
+## Six-question contract
 
-English and Hindi text below is a first wording pass. Each question's required
-status, category options, conditions, and validation message must be reconciled
-with the API contract before implementation. Inputs are collected only when the
-backend says they are needed.
+| Question ID | Applicant prompt | UI and validation |
+|---|---|---|
+| `age` | How old are you? | Whole-number input, 18–60 as set by the current backend policy. |
+| `pincode` | What is the six-digit PIN code of your residence? | Text input; backend currently requires six digits beginning 1–9. |
+| `vehicle` | Which vehicle would you like to finance? | Select one exact `Model_Description` supplied by the vehicle catalogue. |
+| `vehicle_price` | What is the on-road price of the vehicle in rupees? | Positive INR integer within backend limits. Used only to calculate LTV. |
+| `loan_amount` | How much would you like to borrow in rupees? | Positive INR integer, no greater than vehicle price; backend limits are authoritative. |
+| `past_loans_active` | Do you currently have any active loans? | Yes/no choices with canonical values `PAST_LOANS_ACTIVE` and `NO_PAST_LOANS`. |
 
-| Field | English | Hindi | Input / validation and help | Required / condition |
-|---|---|---|---|---|
-| Consent | May we use the information you provide to process this application? | क्या हम आपके आवेदन को संसाधित करने के लिए आपके द्वारा दी गई जानकारी का उपयोग कर सकते हैं? | Choice: Yes / No. Help: Verification steps in this prototype are simulations. | Required to continue. |
-| Age | How old are you? | आपकी उम्र कितनी है? | Whole-number age. Error: Enter your age as a whole number. Help: Enter your age in years. | Required if confirmed by backend/model contract. |
-| Pincode | What is your six-digit Indian PIN code? | आपका छह अंकों का भारतीय पिन कोड क्या है? | Six digits. Error: Enter a valid six-digit PIN code. Help: We use this to check the address area. | Required if confirmed by backend/model contract. |
-| Residence | Which best describes your residence? | आपके निवास का सबसे सही वर्णन कौन-सा है? | Searchable choice from backend-provided options. Error: Choose one of the listed options. | Required if confirmed by backend/model contract. |
-| Employment | What type of work do you do? | आप किस प्रकार का काम करते हैं? | Searchable choice from backend-provided options. Error: Choose one of the listed work types. | Required if confirmed by backend/model contract. |
-| Qualification | What is your highest qualification? | आपकी उच्चतम शैक्षणिक योग्यता क्या है? | Choice from backend-provided options. Error: Choose one of the listed options. | Ask only if required by the contract. |
-| Net salary | What is your monthly take-home income? | आपकी मासिक हाथ में मिलने वाली आय कितनी है? | INR amount. Error: Enter a valid monthly amount in rupees. Help: Enter the amount you receive after deductions. | Required if confirmed by backend/model contract. |
-| Product | What type of vehicle loan are you applying for? | आप किस प्रकार के वाहन ऋण के लिए आवेदन कर रहे हैं? | Choice from backend-provided products. Error: Choose one of the listed loan types. | Required if contract requires applicant selection. |
-| Vehicle make | What is the vehicle make? | वाहन का निर्माता कौन है? | Searchable selection from backend-provided makes. Error: Choose a listed make. | Required if applicable to selected product. |
-| Vehicle model | Which vehicle model are you interested in? | आप किस वाहन मॉडल में रुचि रखते हैं? | Searchable selection filtered by make. Error: Choose a listed model. | Required if applicable to selected product. |
-| Variant | Which variant do you want? | आप कौन-सा वेरिएंट चाहते हैं? | Searchable selection filtered by model. Error: Choose a listed variant. | Required if applicable to selected product. |
-| Vehicle price | What is the vehicle price in rupees? | वाहन की कीमत रुपये में कितनी है? | INR amount. Error: Enter a valid vehicle price in rupees. | Ask if required to calculate LTV. |
-| Loan amount | How much would you like to borrow? | आप कितनी ऋण राशि लेना चाहते हैं? | INR amount. Error: Enter a valid loan amount in rupees. Help: The requested amount must be within the limits shown by the lender. | Required. Backend supplies limits. |
-| Gender | Which gender option, if any, would you like to provide? | आप कौन-सा लिंग विकल्प देना चाहेंगे, यदि कोई हो? | Choice from backend-approved options, including a skip option if permitted. Error: Choose an available option. | Ask only if approved and required by the contract. |
-| Active past loans | Do you currently have any active loans? | क्या आपके पास अभी कोई सक्रिय ऋण है? | Yes / No / Unsure if supported by backend. Error: Choose one option. | Ask only if approved and required by the contract. |
-| OTP | Enter the code sent to your phone. | आपके फ़ोन पर भेजा गया कोड दर्ज करें। | One-time code field. Error: That code could not be verified. Request a new code or try again. | Only during mock OTP verification. |
-| PAN | Enter your PAN for the prototype verification step. | प्रोटोटाइप सत्यापन के लिए अपना PAN दर्ज करें। | PAN input; format and verification outcome come from backend. Error: Check the PAN details and try again. | Only if verification is requested; explain purpose first. |
+The backend derives `LTV`, `Final_Tier`, `Make_Code`, `Model_Variant`, and
+`Product_Code`. The chatbot must not ask the applicant to supply these fields.
 
-## Validation and display rules
+## Decision and explanations
 
-- Store monetary values as INR amounts in the API's agreed numeric format.
-- Format display values with Indian grouping, for example `₹25,000`, `₹85,000`,
-  and `₹1,50,000`. Keep parsing and formatting in shared localization utilities.
-- Pincode input accepts exactly six digits; the backend remains authoritative.
-- Display server validation messages next to the relevant question and announce
-  errors to assistive technology.
-- Do not derive LTV in a visual component. Display only a server-calculated value.
-- Preserve the selected language while navigating, reviewing, and correcting answers.
-- Do not expose application identifiers in general logs or error messages.
+The backend model returns `APPROVED` or `DECLINED`; verification policy may
+place an application in `MANUAL_REVIEW`. The result screen includes an academic
+prototype caveat. It does not show audit probability or cutoff values.
 
-## Open contract decisions
+The backend explanation adapter removes numeric SHAP contributions and hides
+`Location` by default. The frontend also uses a factor allow-list, omits unknown
+factors, and renders only localized factor labels and relative strength. It
+does not call a language model to generate or change explanations. Pincode may
+act as a proxy for community traits, so location stays hidden until the team
+explicitly agrees to show it.
 
-1. Person 1: confirm the minimal model feature set, required fields, approved
-   categories, and which questions can be skipped or derived.
-2. Person 2: define endpoints, answer payloads, server-side validation errors,
-   question sequencing, verification request/status formats, and consent recording.
-3. Team: approve the Hindi wording, consent language, help/contact details, and
-   which verification steps appear in the academic prototype.
+## API routes used by the frontend
+
+All routes are under `/api/v1`:
+
+- `POST /applications` records consent and returns an application ID.
+- `GET /applications/{id}/next-question` returns the next question and
+  answered/total counts. Vehicle choices are included in the `vehicle` question.
+- `GET /reference/vehicles` returns the catalogue for clients that need it
+  separately; each `value` is the exact model description.
+- `PATCH /applications/{id}/answers` saves and validates one answer.
+- `POST /applications/{id}/verification/otp/request` and
+  `POST /applications/{id}/verification/otp/confirm` run the mocked OTP flow.
+- `POST /applications/{id}/verification/pan` validates and records a mock PAN
+  success without storing the PAN value.
+- `POST /applications/{id}/verification/documents` records file metadata only.
+- `POST /applications/{id}/submit` returns the recorded model decision,
+  probability, threshold, model version, and explanation. The UI displays only
+  the decision and safe explanation fields.
+- `GET /applications/{id}/decision` retrieves the recorded response.
+
+## Runtime model setup
+
+The API loads the trained model once at startup. `ABC_MODEL_PATH` can override
+the default `models/catboost_minimal_v2/decision_model.joblib` path;
+`ABC_MODEL_PROVIDER=trained` is the default. The model and
+`models/reference/reference_tables.json` are private local artifacts ignored by
+Git. A missing model or catalogue makes decision submissions return `503`.
+`ABC_EXPECTED_MODEL_VERSION=catboost-minimal-v2` can enforce the expected model
+version. Location factors are hidden by default through
+`ABC_HIDDEN_EXPLANATION_FACTORS=Location`.

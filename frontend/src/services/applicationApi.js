@@ -2,7 +2,9 @@
 // The backend owns question order, validation, verification, and the credit decision;
 // this module only transports requests and never derives an outcome itself.
 
-const API_BASE_URL = window.ABC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const API_BASE_URL = window.ABC_API_BASE_URL
+  ?? document.querySelector('meta[name="api-base-url"]')?.content
+  ?? "http://localhost:8000/api/v1";
 
 export class ApiError extends Error {
   constructor(status, detail) {

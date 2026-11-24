@@ -1,28 +1,30 @@
 # Frontend
 
-This directory contains the first browser-based loan application chat prototype.
-It uses native browser modules and has no package install step yet. Serve this
-directory with a static HTTP server and open its root page. Opening `index.html`
-directly may prevent browser module loading.
+This is a native browser-module prototype with no package install step. Serve
+`frontend/` over HTTP; opening `index.html` directly may prevent module loading.
 
-Keep the client organized by product responsibility:
+The conversation follows the backend's six-question model contract, then the
+prototype verification steps, review, and backend decision. The backend owns
+question order, catalogue values, validation, LTV derivation, and decision
+logic. The browser never calculates or changes the decision.
 
-```text
-frontend/
-|-- src/
-|   |-- components/   Reusable presentation components
-|   |-- features/     Loan conversation and application flows
-|   |-- services/     Typed backend API client
-|   `-- styles/       Shared design tokens and global styles
-|-- tests/            Frontend tests
-`-- public/           Static assets
-```
+The API base URL is read from `window.ABC_API_BASE_URL`, then the
+`api-base-url` meta tag in `index.html`. The default meta value is `/api/v1`,
+which expects a same-origin reverse proxy. For local development with a separate
+backend, set the meta value to `http://localhost:8000/api/v1` or define
+`window.ABC_API_BASE_URL` before `main.js` loads. The API allows the configured
+local frontend origins.
 
-The current prototype uses `src/main.js`, `src/locales/`, and
-`src/services/applicationApi.js`. The API service is a mock boundary and must be
-replaced with Person 2's agreed contract during integration. English and Hindi
-strings are centralized in locale dictionaries; INR values use `Intl.NumberFormat`.
+OTP and PAN checks are simulations. The prototype's document endpoint records
+file metadata only; it does not upload document contents. Do not use real
+personal identifiers or documents.
 
-The frontend may collect and display application information, but it must not
-calculate, override, or reinterpret the credit decision. That responsibility stays
-in the backend.
+Decision responses include audit fields, but the interface does not display the
+probability, threshold, or numeric explanation contributions. Location is
+hidden from explanations because pincode can proxy sensitive community traits.
+The interface shows only allow-listed factor labels and relative strengths.
+
+Model files are private, local artifacts under `models/` and are ignored by
+Git. The API loads the configured model once at startup; if it or the reference
+tables are missing, decision requests return `503` while the rest of the API
+can remain available.

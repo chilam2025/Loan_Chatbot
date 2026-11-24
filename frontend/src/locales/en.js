@@ -16,4 +16,13 @@ export default {
   otp: "Enter the 6-digit code we sent.", otpHelp: "Prototype code:", pan: "What is your PAN?", panHelp: "Format: ABCDE1234F. It is checked for format only and not stored.", panMasked: "PAN provided",
   document: "Please upload proof of income, such as a salary slip.", documentHelp: "PDF, JPEG or PNG up to 10 MB. Only the file details are recorded in this prototype.", documentRequired: "Choose a file to continue.",
   reviewLocked: "Your answers are locked after verification. Submit when you’re ready.", approved: "Good news — your application has been approved in principle.", declinedDecision: "We’re sorry — we can’t approve this application at this time.", decisionModel: "Decision recorded by model",
+  resultTitle: "Assessment result", decisionUnknown: "The assessment result is unavailable. Please contact support.",
+  prototypeDecisionNote: "This academic prototype estimates historical decisions. It is not a real lending decision.",
+  explanationTitle: "Factors considered", factorsRaising: "Factors raising the decline estimate", factorsLowering: "Factors lowering the decline estimate",
+  factorLoanVehicle: "Loan size relative to vehicle price", factorLoanAmount: "Loan amount", factorAge: "Age",
+  factorActiveLoan: "Existing active loan", factorVehicle: "Vehicle",
+  factorStrengthSlight: "slight influence", factorStrengthModerate: "moderate influence", factorStrengthStrong: "strong influence",
+  languageLocked: "The application language is fixed after the application starts.",
+  nextApproved: "Next: review the sanction documents and terms with the lender before proceeding.",
+  nextDeclined: "You can review this result with the lender if you have questions.",
 };

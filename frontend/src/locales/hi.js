@@ -16,4 +16,11 @@ export default {
   otp: "हमारे भेजे गए 6 अंकों का कोड दर्ज करें।", otpHelp: "प्रोटोटाइप कोड:", pan: "आपका PAN क्या है?", panHelp: "प्रारूप: ABCDE1234F। केवल प्रारूप जाँचा जाता है, इसे संग्रहीत नहीं किया जाता।", panMasked: "PAN दिया गया",
   document: "कृपया आय का प्रमाण, जैसे वेतन पर्ची, अपलोड करें।", documentHelp: "PDF, JPEG या PNG, 10 MB तक। इस प्रोटोटाइप में केवल फ़ाइल का विवरण दर्ज होता है।", documentRequired: "आगे बढ़ने के लिए एक फ़ाइल चुनें।",
   reviewLocked: "सत्यापन के बाद आपके जवाब बदले नहीं जा सकते। तैयार होने पर जमा करें।", approved: "अच्छी खबर — आपका आवेदन सैद्धांतिक रूप से स्वीकृत हो गया है।", declinedDecision: "क्षमा करें — हम इस समय यह आवेदन स्वीकृत नहीं कर सकते।", decisionModel: "निर्णय दर्ज करने वाला मॉडल",
+  resultTitle: "मूल्यांकन का परिणाम", decisionUnknown: "मूल्यांकन का परिणाम उपलब्ध नहीं है। कृपया सहायता से संपर्क करें।",
+  prototypeDecisionNote: "यह शैक्षणिक प्रोटोटाइप पुराने फैसलों का अनुमान लगाता है। यह वास्तविक ऋण निर्णय नहीं है।",
+  explanationTitle: "मॉडल ने इन कारकों पर विचार किया", factorsRaising: "अस्वीकृति का अनुमान बढ़ाने वाले कारक", factorsLowering: "अस्वीकृति का अनुमान घटाने वाले कारक",
+  factorLoanVehicle: "वाहन की कीमत के मुकाबले ऋण की राशि", factorLoanAmount: "ऋण की राशि", factorAge: "उम्र",
+  factorActiveLoan: "मौजूदा सक्रिय ऋण", factorVehicle: "वाहन",
+  factorStrengthSlight: "हल्का प्रभाव", factorStrengthModerate: "मध्यम प्रभाव", factorStrengthStrong: "तीव्र प्रभाव",
+  languageLocked: "आवेदन शुरू होने के बाद उसकी भाषा नहीं बदली जा सकती।",
 };

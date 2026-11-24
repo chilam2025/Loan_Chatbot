@@ -1,53 +1,58 @@
-# ABC Credit Loan Approval Chatbot
+# ABC Credit Loan Chatbot
 
-This repository implements a loan application chatbot whose conversation layer collects and validates applicant information while a separate predictive model produces the approval probability. The language model must never make or override the credit decision.
+An academic vehicle-loan application prototype. The backend collects six model
+inputs, validates them, and calls the packaged CatBoost model. The browser only
+collects answers and presents the backend decision; it does not make credit
+decisions. OTP and PAN checks are simulations, and document upload records
+metadata only.
 
-## Current status
+## Start locally
 
-Phase A is implemented as a reproducible exploratory data analysis and data-quality pipeline. It validates the supplied schema, normalizes values for analysis, separates unlabelled records, measures class imbalance and missingness, checks business-rule anomalies, and generates tables and figures for review.
-
-## Quick start
-
-The raw CSV is deliberately excluded from Git because it may contain applicant information. Place it at `data/raw/training_data.csv`, then run from the repository root:
+For a quick API-only run, install the backend and start it from the repository
+root:
 
 ```powershell
 uv sync --project backend --extra dev
-uv run --project backend phase-a
-uv run --project backend prepare-data
-uv run --project backend pytest backend/tests
+uv run --project backend alembic -c backend/alembic.ini upgrade head
+uv run --project backend uvicorn abc_credit.api.main:app --app-dir backend/src --reload
 ```
 
-Generated artifacts are written to `reports/generated/`. The main conclusions and proposed preprocessing decisions are in `reports/phase_a_findings.md`.
+Serve `frontend/` over HTTP (for example,
+`python -m http.server 5173 --directory frontend`) and open
+`http://localhost:5173`. The frontend defaults to the same
+origin `/api/v1`; for separate local servers set the API base URL to
+`http://localhost:8000/api/v1` in `frontend/index.html`.
+
+For a one-command Docker setup with PostgreSQL, migration, backend, and frontend,
+see [deployment instructions](docs/deployment.md) and run `docker compose up --build`.
+Provide the private model artifacts locally under `models/` before starting the
+stack. They are ignored by Git and must be transferred privately.
+
+## Model and data
+
+The model uses age (18–60), pincode, vehicle, vehicle price, loan amount, and
+active-loan status. Vehicle price is used to derive LTV. The private handoff
+contains the model and reference tables; use `smoke_test_model.py` to check the
+local installation. Do not commit model artifacts or raw applicant data.
+
+The exploratory data-quality findings are in
+[`reports/phase_a_findings.md`](reports/phase_a_findings.md). The modelling
+pipeline and API contracts are documented under `docs/`.
 
 ## Repository layout
 
-```text
-backend/               Python services, data pipeline, and backend tests
-frontend/              Chat client boundary and frontend implementation guide
-data/raw/              Local sensitive source data (ignored by Git)
-reports/               Findings and reproducible generated analysis artifacts
-docs/                  Cross-cutting architecture and working agreements
+- `backend/`: FastAPI application, migrations, and Python package
+- `frontend/`: browser client and English/Hindi prompts
+- `docs/`: contracts, conversation flow, and deployment guide
+- `reports/`: data-quality and modelling reports
+- `models/`: private, local model artifacts (Git ignored)
+
+## Development checks
+
+```powershell
+uv sync --project backend --extra dev
+uv run --project backend pytest backend/tests
+uv run --project backend ruff check backend
 ```
 
-The repository is organized as a monorepo. Backend dependencies stay isolated in
-`backend/pyproject.toml`; the frontend can adopt its own toolchain without mixing
-Python and JavaScript build files. Shared product contracts and architecture belong
-in `docs/`, while generated analysis stays in `reports/generated/`.
-
-## Design guardrails
-
-- `Decision` is a historical approval outcome, not a loan-default label.
-- `ID` is retained only for traceability and must not be used as a predictor.
-- Preprocessing will be fitted on training folds only to prevent leakage.
-- Unknown categories must be handled without crashing the inference pipeline.
-- Model evaluation must emphasize precision, recall, F1 and the confusion matrix for `DECLINED`; raw accuracy is misleading because the data are highly imbalanced.
-- Logs must mask or omit PII such as the full pincode and application identifier.
-
-## Next phases
-
-Phase B now includes leakage-safe stratified train/validation/test splitting,
-training-only missing-value imputation, and unknown-safe categorical encoding. The
-next modelling work will add an interpretable logistic-regression baseline, a
-tree-based comparison model, probability calibration, and business-informed
-threshold selection. Phase C will add the chatbot and deterministic model integration.
-
+GitHub Actions runs the Python test and lint checks on pushes and pull requests.

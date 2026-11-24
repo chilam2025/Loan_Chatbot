@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f4f6f2" />
+    <meta name="api-base-url" content="/api/v1" />
     <title>ABC Credit | Vehicle loan application</title>
     <link rel="stylesheet" href="/src/styles.css" />
     <script type="module" src="/src/main.js"></script>
@@ -12,7 +13,7 @@
     <main class="app-shell">
       <header class="topbar">
         <a class="brand" href="#" aria-label="ABC Credit home"><span class="brand-mark" aria-hidden="true">A</span><span>ABC Credit</span></a>
-        <label class="language-picker"><span class="sr-only" id="language-label">Language</span><select id="language" aria-labelledby="language-label"><option value="en">English</option><option value="hi">हिन्दी</option></select></label>
+        <label class="language-picker"><span class="sr-only" id="language-label">Language</span><select id="language" aria-labelledby="language-label" aria-describedby="language-note"><option value="en">English</option><option value="hi">हिन्दी</option></select><span class="sr-only" id="language-note">Language can be changed until the application starts.</span></label>
       </header>
       <section class="application" aria-labelledby="page-title">
         <div class="intro">
