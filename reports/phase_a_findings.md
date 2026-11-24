@@ -9,7 +9,7 @@ The dataset has low overall missingness but contains meaningful quality and poli
 ## Confirmed observations
 
 - Four vehicle names in the training CSV contain a mis-encoded dash (`â€“`). The reference catalogue preserves the exact source values required by the model while presenting clean labels to applicants; this encoding issue should be corrected in a future source-data refresh.
-- The `Existing active loan` explanation is a per-application SHAP contribution to the historical decline score. Its direction can reflect learned associations and feature interactions, so it should not be presented as a causal effect or advice; the API maps `PAST_LOANS_ACTIVE` and `NO_PAST_LOANS` to their corresponding answers without reversing them.
+- The `Active-loan status` explanation is a per-application SHAP contribution to the historical decline score. Its direction can reflect learned associations and feature interactions, so it should not be presented as a causal effect or advice; the API maps `PAST_LOANS_ACTIVE` and `NO_PAST_LOANS` to their corresponding answers without reversing them.
 
 - Raw shape: 108,423 rows by 17 columns.
 - Labelled rows: 108,422; one row has no decision label.

@@ -53,7 +53,9 @@ All members jointly approve the target definition, data split, minimal input set
 ## Proposed delivery targets
 
 - Application completion target X: no more than 5 minutes, to be validated with user timing tests.
-- Post-input decision latency target Y: no more than 2 seconds for local preprocessing and inference, measured at p95.
+- Post-input decision latency target Y: no more than 2 seconds for local prediction and
+  explanation generation, measured at p95 with `benchmark-decision`.
 
-These are engineering targets, not claims of achieved performance.
+The completion target still requires timed user sessions. The decision target is enforced
+by the repeatable backend benchmark and should be rerun on the final deployment hardware.
 

@@ -6,7 +6,7 @@ from alembic.config import Config
 from sqlalchemy import func, inspect, select
 
 from abc_credit.db.models import ApplicationAnswerModel, ApplicationModel, AuditEventModel
-from abc_credit.db.repository import SQLAlchemyApplicationRepository
+from abc_credit.db.repository import SQLAlchemyApplicationRepository, privacy_safe_answer_log
 from abc_credit.db.session import SessionFactory, build_session_factory, create_database_engine
 from abc_credit.schemas.questionnaire import AnswerInput, QuestionId
 from abc_credit.services.application_service import ApplicationService
@@ -91,9 +91,29 @@ def test_application_and_answers_survive_service_restart(
     ]
     assert events[1].details == {
         "answer_count": 2,
+        "answers": {"age": 32, "loan_amount": 90_000},
         "completed": False,
         "resulting_status": "COLLECTING_INFORMATION",
     }
+
+
+def test_answer_audit_records_every_value_and_masks_pincode() -> None:
+    logged = privacy_safe_answer_log(
+        {
+            QuestionId.AGE: 30,
+            QuestionId.PINCODE: "560002",
+            QuestionId.LOAN_AMOUNT: 80_000,
+            QuestionId.PAST_LOANS_ACTIVE: "NO_PAST_LOANS",
+        }
+    )
+
+    assert logged == {
+        "age": 30,
+        "pincode": "560XXX",
+        "loan_amount": 80_000,
+        "past_loans_active": "NO_PAST_LOANS",
+    }
+    assert "560002" not in repr(logged)
 
 
 def test_deleting_application_cascades_private_records(

@@ -308,10 +308,12 @@ advise on improving a score, or mention gender.
   a probability outside 0–1. The application returns to `READY_FOR_REVIEW` and the
   client may retry; no outcome is guessed.
 
-Each decision is written to an audit event and to the application log with the model
-version, threshold, `probability_declined`, decision, inference latency in milliseconds,
-and the ten model fields, with the pincode reduced to its first three digits
-(`560XXX`). Raw answers are stored only in the answers table.
+Each accepted answer batch is written to an append-only audit event. The event records
+every supplied answer while reducing the residential pincode to its first three digits
+(`560XXX`); raw validated answers remain in the answers table. Each decision is written
+to an audit event and to the application log with the model version, threshold,
+`probability_declined`, decision, model-and-explanation latency in milliseconds, and the
+ten model fields, again with the pincode reduced to its first three digits.
 
 ### `GET /api/v1/applications/{application_id}/decision`
 

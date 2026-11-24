@@ -1,4 +1,4 @@
-from time import perf_counter
+from time import perf_counter, sleep
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -46,6 +46,14 @@ class ExplanationFailsModel(MockLoanModel):
 
     def explain(self, payload: ModelPayload) -> dict:
         raise RuntimeError("explainer down")
+
+
+class SlowExplanationModel(MockLoanModel):
+    version = "slow-explanation-test"
+
+    def explain(self, payload: ModelPayload) -> dict:
+        sleep(0.02)
+        return super().explain(payload)
 
 
 class RecordingModel(MockLoanModel):
@@ -279,7 +287,7 @@ def test_decision_audit_records_model_metadata_without_applicant_answers() -> No
     assert stored.latency_ms >= 0
 
 
-def test_decision_latency_is_within_budget() -> None:
+def test_complete_decision_response_is_within_budget() -> None:
     api, _ = client_with_model()
     application_id = ready_for_review(api)
 
@@ -289,6 +297,19 @@ def test_decision_latency_is_within_budget() -> None:
 
     assert response.status_code == 200
     assert elapsed_seconds < 1.0
+
+
+def test_recorded_latency_includes_explanation_generation() -> None:
+    api, service = client_with_model(SlowExplanationModel())
+    application_id = ready_for_review(api)
+
+    response = api.post(f"/api/v1/applications/{application_id}/submit")
+
+    assert response.status_code == 200
+    with service.repository.session_factory() as session:
+        stored = session.get(DecisionModel, application_id)
+    assert stored is not None
+    assert stored.latency_ms >= 15
 
 
 def test_submit_rejects_missing_answers_without_changing_state() -> None:

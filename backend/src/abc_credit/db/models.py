@@ -80,7 +80,7 @@ class ApplicationAnswerModel(Base):
 
 
 class AuditEventModel(Base):
-    """Append-only operational event without applicant answer values."""
+    """Append-only operational event containing privacy-safe audit details."""
 
     __tablename__ = "audit_events"
     __table_args__ = (Index("ix_audit_events_application_occurred", "application_id", "occurred_at"),)

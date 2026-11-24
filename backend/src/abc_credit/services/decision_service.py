@@ -180,6 +180,8 @@ class DecisionService:
             self._repository.release_submission(application_id, reason="InvalidPayload")
             raise InvalidSubmissionError(str(error)) from error
 
+        # The applicant waits for both inference and the explanation. Measure
+        # that complete model-processing path against the brief's Y target.
         started = perf_counter()
         try:
             prediction = model.predict(payload)
@@ -197,9 +199,8 @@ class DecisionService:
                 type(error).__name__,
             )
             raise ModelUnavailableError("model inference failed") from error
-        latency_ms = round((perf_counter() - started) * 1000, 3)
-
         explanation = self._explain(model, payload)
+        latency_ms = round((perf_counter() - started) * 1000, 3)
         decision = DecisionOutcome(prediction.decision)
         masked = masked_payload(payload)
         record = self._repository.record_decision(

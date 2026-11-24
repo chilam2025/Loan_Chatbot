@@ -21,6 +21,7 @@ uv run --project backend alembic -c backend/alembic.ini upgrade head
 uv run --project backend uvicorn abc_credit.api.main:app --reload
 uv run --project backend pytest backend/tests
 uv run --project backend ruff check backend
+uv run --project backend benchmark-decision
 ```
 
 The default Phase A input is `data/raw/training_data.csv`; generated artifacts go
@@ -35,6 +36,11 @@ applicant-level split files.
 
 The API is served under `/api/v1`; interactive OpenAPI documentation is available
 at `/docs` while the server is running.
+
+`benchmark-decision` measures the complete model-processing path used by submission
+(prediction plus applicant-facing explanation). It fails with a non-zero exit code when
+the measured p95 exceeds the project target of 2,000 ms. Use `--output` to retain the
+JSON evidence under `reports/generated/`.
 
 ## Model and configuration
 

@@ -24,6 +24,26 @@ class RepositoryStateConflictError(ValueError):
         super().__init__(application_status)
 
 
+def privacy_safe_answer_log(
+    answers: dict[QuestionId, AnswerValue],
+) -> dict[str, AnswerValue | str]:
+    """Return every supplied answer with direct location detail masked.
+
+    Raw validated values remain in ``application_answers``.  The append-only
+    audit trail records the submitted values required by the project brief,
+    but reduces a residential pincode to its first three digits.
+    """
+
+    logged: dict[str, AnswerValue | str] = {}
+    for question_id, value in answers.items():
+        if question_id is QuestionId.PINCODE:
+            pincode = str(value)
+            logged[question_id.value] = f"{pincode[:3]}XXX"
+        else:
+            logged[question_id.value] = value
+    return logged
+
+
 class SQLAlchemyApplicationRepository:
     """Persist applications, answers, and audit events in short transactions."""
 
@@ -120,6 +140,7 @@ class SQLAlchemyApplicationRepository:
                     occurred_at=timestamp,
                     details={
                         "answer_count": len(answers),
+                        "answers": privacy_safe_answer_log(answers),
                         "completed": complete,
                         "resulting_status": application.status,
                     },
