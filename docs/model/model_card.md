@@ -86,7 +86,8 @@ for a two-wheeler loan application was DECLINED. The label is a historical
 decision, not repayment behaviour. Academic prototype; not for real lending.
 
 **Model.** CatBoost classifier (600 iterations, depth 4, learning rate 0.05,
-L2 10, seed 42, no class weights, no separate calibration). Inputs are ten
+L2 10, categorical CTR complexity 4, seed 42, no class weights, no separate
+calibration). Inputs are ten
 fields obtained from six applicant questions: age, pincode, vehicle,
 loan amount and vehicle price, plus whether an active loan exists. The backend
 derives LTV, `Final_Tier` and the vehicle fields (see `model_contract_minimal.md`).
@@ -136,6 +137,11 @@ LightGBM blend (+0.006 AP in grouped folds, no gain on validation), neural
 networks, EBM, stacking, class weights, balanced undersampling, and calibration
 all landed within AP 0.15 to 0.177. The information in the fields, not the
 algorithm, limits performance.
+
+The November 2026 promotion audit also tested higher categorical complexity
+and a deeper model against the actual v2 defaults. Higher complexity was
+identical; the deeper model was slightly worse and inconsistent across folds.
+No v3 artifact was promoted.
 
 **Subgroups (validation).** Predicted decline rate: women 12.1%, men 12.3%.
 DECLINED recall: women 38.2%, men 39.7%; resident type R 17.1% against 40.5%

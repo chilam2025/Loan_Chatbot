@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from abc_credit.api.dependencies import get_verification_service
 from abc_credit.db.verification_repository import VerificationSnapshot
+from abc_credit.integrations.verification import ProviderUnavailableError
 from abc_credit.schemas.verification import (
     DocumentMetadataRequest,
     OtpChallengeResponse,
@@ -20,6 +21,8 @@ from abc_credit.services.verification_service import (
     OtpConsumedError,
     OtpExpiredError,
     OtpMismatchError,
+    OtpMobileMismatchError,
+    PanVerificationFailedError,
     VerificationNotFoundError,
     VerificationService,
     VerificationStateError,
@@ -35,10 +38,14 @@ VerificationServiceDependency = Annotated[
 ]
 
 
-def _response(snapshot: VerificationSnapshot) -> VerificationResponse:
+def _response(
+    snapshot: VerificationSnapshot,
+    service: VerificationService,
+) -> VerificationResponse:
     return VerificationResponse(
         application_id=snapshot.application_id,
         status=snapshot.status,
+        provider=service.provider_label,
         mobile_verified=snapshot.mobile_verified,
         pan_verified=snapshot.pan_verified,
         document_received=snapshot.document_received,
@@ -65,12 +72,17 @@ def get_verification(
     application_id: UUID,
     service: VerificationServiceDependency,
 ) -> VerificationResponse:
-    """Return non-sensitive progress for the mock verification workflow."""
+    """Return non-sensitive progress for the configured verification workflow."""
 
     try:
-        return _response(service.get(application_id))
+        return _response(service.get(application_id), service)
     except (VerificationNotFoundError, VerificationStateError) as error:
         _raise_common_error(error)
+    except ProviderUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OTP delivery is temporarily unavailable",
+        ) from error
 
 
 @router.post("/otp/request", response_model=OtpChallengeResponse)
@@ -89,6 +101,7 @@ def request_otp(
         application_id=challenge.application_id,
         challenge_id=challenge.challenge_id,
         expires_at=challenge.expires_at,
+        delivery=challenge.delivery,
         mock_code=challenge.mock_code,
     )
 
@@ -99,10 +112,15 @@ def confirm_otp(
     request: OtpConfirmationRequest,
     service: VerificationServiceDependency,
 ) -> VerificationResponse:
-    """Confirm one mock OTP challenge and persist failed-attempt limits."""
+    """Confirm one OTP challenge and persist failed-attempt limits."""
 
     try:
-        snapshot = service.confirm_otp(application_id, request.challenge_id, request.code)
+        snapshot = service.confirm_otp(
+            application_id,
+            request.challenge_id,
+            request.mobile_number,
+            request.code,
+        )
     except (VerificationNotFoundError, VerificationStateError) as error:
         _raise_common_error(error)
     except (OtpExpiredError, OtpConsumedError) as error:
@@ -118,9 +136,19 @@ def confirm_otp(
             ) from error
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Invalid mock OTP; {error.attempts_remaining} attempts remaining",
+            detail=f"Invalid OTP; {error.attempts_remaining} attempts remaining",
         ) from error
-    return _response(snapshot)
+    except OtpMobileMismatchError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="The OTP challenge does not match this mobile number",
+        ) from error
+    except ProviderUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OTP verification is temporarily unavailable",
+        ) from error
+    return _response(snapshot, service)
 
 
 @router.post("/pan", response_model=VerificationResponse)
@@ -129,12 +157,30 @@ def verify_pan(
     request: PanVerificationRequest,
     service: VerificationServiceDependency,
 ) -> VerificationResponse:
-    """Apply PAN format validation and record a clearly labelled mock success."""
+    """Verify transient PAN identity fields through the configured provider."""
 
     try:
-        return _response(service.verify_pan(application_id, request.pan))
+        return _response(
+            service.verify_pan(
+                application_id,
+                pan=request.pan,
+                full_name=request.full_name,
+                date_of_birth=request.date_of_birth,
+            ),
+            service,
+        )
     except (VerificationNotFoundError, VerificationStateError) as error:
         _raise_common_error(error)
+    except PanVerificationFailedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="PAN, legal name, or date of birth could not be verified",
+        ) from error
+    except ProviderUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PAN verification is temporarily unavailable",
+        ) from error
 
 
 @router.post("/documents", response_model=VerificationResponse)
@@ -146,7 +192,7 @@ def record_document(
     """Record metadata for income evidence without accepting document contents."""
 
     try:
-        return _response(service.record_document(application_id, request))
+        return _response(service.record_document(application_id, request), service)
     except (VerificationNotFoundError, VerificationStateError) as error:
         _raise_common_error(error)
     except InvalidDocumentMetadataError as error:

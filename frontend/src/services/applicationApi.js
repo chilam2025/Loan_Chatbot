@@ -52,15 +52,24 @@ export function requestOtp(applicationId, mobileNumber) {
   });
 }
 
-export function confirmOtp(applicationId, challengeId, code) {
+export function confirmOtp(applicationId, challengeId, mobileNumber, code) {
   return request("POST", `${application(applicationId)}/verification/otp/confirm`, {
     challenge_id: challengeId,
+    mobile_number: mobileNumber,
     code,
   });
 }
 
-export function verifyPan(applicationId, pan) {
-  return request("POST", `${application(applicationId)}/verification/pan`, { pan });
+export function verifyPan(applicationId, pan, fullName, dateOfBirth) {
+  return request("POST", `${application(applicationId)}/verification/pan`, {
+    pan,
+    full_name: fullName,
+    date_of_birth: dateOfBirth,
+  });
+}
+
+export function askAssistant(message, locale) {
+  return request("POST", "/assistant/messages", { message, locale });
 }
 
 // Only file metadata is sent; document contents never leave the browser in this prototype.

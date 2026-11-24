@@ -10,7 +10,7 @@ must not reproduce decision logic.
 The implementation stores application metadata, validated answers, and audit events in
 separate relational tables behind a repository boundary. SQLite supports local
 development and PostgreSQL is configured through `ABC_DATABASE_URL`. The academic
-verification workflow uses a clearly labelled mock provider. Model inference uses Person 1's
+verification workflow uses configurable mock or registered external providers. Model inference uses Person 1's
 packaged six-question model (`catboost-minimal-v2`, see
 `docs/model/model_contract_minimal.md`), loaded once at startup. A clearly labelled
 deterministic mock (`ABC_MODEL_PROVIDER=mock`) exists for automated tests only.
@@ -213,26 +213,34 @@ be changed after that transition.
 
 ### `GET /api/v1/applications/{application_id}/verification`
 
-Returns non-sensitive mock-verification progress. It never returns a mobile number,
+Returns non-sensitive verification progress. It never returns a mobile number,
 PAN, stored document name, OTP digest, or internal attempt history.
 
 ### `POST /api/v1/applications/{application_id}/verification/otp/request`
 
-Creates a five-minute mock OTP challenge with three attempts. The response exposes
-`mock_code` only so the academic demonstration can proceed without an SMS provider.
+Creates a five-minute OTP challenge with three attempts. MSG91 mode returns
+`delivery: "sms"` and never exposes the code. Test-only mock mode returns `mock_code`.
+The database stores only the phone's final four digits and a keyed digest.
 Requesting a replacement invalidates any earlier unused challenge. The database stores
 only the mobile number's final four digits and a salted OTP digest.
 
 ### `POST /api/v1/applications/{application_id}/verification/otp/confirm`
 
-Confirms the mock OTP. Three failed attempts move the application to `MANUAL_REVIEW`.
+Confirms the OTP for the same mobile number used to request it. MSG91 owns production
+code verification. Three failed attempts move the application to `MANUAL_REVIEW`.
 Expired, consumed, and replaced challenges return `409 Conflict`.
 
 ### `POST /api/v1/applications/{application_id}/verification/pan`
 
-Validates the official PAN structure of five letters, four digits, and one final letter,
-then records a clearly labelled mock success. This endpoint does not contact the Income
-Tax Department and does not store the PAN value.
+Accepts PAN, full legal name and date of birth transiently. Protean mode signs and sends
+the request to Online PAN Verification and records success only for a valid, matching,
+operative PAN. The supplied identity values are not stored. Mock mode remains for tests.
+
+### `POST /api/v1/assistant/messages`
+
+Sends a process question to the guarded Ollama/Qwen assistant. Common PAN, phone and
+six-digit values are redacted first. The assistant receives no stored application state
+and cannot submit, score, approve or decline an application.
 
 ### `POST /api/v1/applications/{application_id}/verification/documents`
 

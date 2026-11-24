@@ -1,6 +1,6 @@
 """Schemas for the explicitly mocked applicant-verification workflow."""
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from re import fullmatch
 from typing import Literal
@@ -32,26 +32,29 @@ class OtpRequest(BaseModel):
 
 
 class OtpChallengeResponse(BaseModel):
-    """Mock OTP challenge; the code is exposed only for the academic demonstration."""
+    """OTP challenge; production responses never expose the code."""
 
     application_id: UUID
     challenge_id: UUID
     expires_at: datetime
-    delivery: Literal["mock"] = "mock"
-    mock_code: str
+    delivery: Literal["mock", "sms"]
+    mock_code: str | None = None
 
 
 class OtpConfirmationRequest(BaseModel):
     """Code submitted for one specific mock challenge."""
 
     challenge_id: UUID
+    mobile_number: str = Field(pattern=r"^[6-9][0-9]{9}$")
     code: str = Field(pattern=r"^[0-9]{6}$")
 
 
 class PanVerificationRequest(BaseModel):
-    """PAN accepted transiently for format validation by the mock provider."""
+    """Identity fields accepted transiently for an authorized PAN provider."""
 
     pan: str
+    full_name: str = Field(min_length=2, max_length=85)
+    date_of_birth: date
 
     @field_validator("pan")
     @classmethod
@@ -60,6 +63,23 @@ class PanVerificationRequest(BaseModel):
         if fullmatch(r"[A-Z]{5}[0-9]{4}[A-Z]", normalized) is None:
             raise ValueError("PAN must contain five letters, four digits, and one letter")
         return normalized
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized or any(character in normalized for character in "~^"):
+            raise ValueError("full_name contains unsupported characters")
+        return normalized
+
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_date_of_birth(cls, value: date) -> date:
+        today = date.today()
+        age = today.year - value.year - ((today.month, today.day) < (value.month, value.day))
+        if age < 18 or age > 100:
+            raise ValueError("applicant must be between 18 and 100 years old")
+        return value
 
 
 class DocumentMetadataRequest(BaseModel):
@@ -84,7 +104,7 @@ class VerificationResponse(BaseModel):
 
     application_id: UUID
     status: VerificationStatus
-    provider: Literal["mock"] = "mock"
+    provider: str
     mobile_verified: bool
     pan_verified: bool
     document_received: bool

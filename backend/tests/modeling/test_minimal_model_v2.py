@@ -63,6 +63,12 @@ def test_hierarchy_columns_come_from_a_valid_pincode():
     assert list(result.columns[1:]) == HIERARCHY_COLUMNS
 
 
+def test_catboost_interaction_complexity_is_explicitly_reproducible():
+    classifier = build_minimal_v2_pipeline().named_steps["classifier"]
+
+    assert classifier.get_params()["max_ctr_complexity"] == 4
+
+
 def test_contract_fields_are_enough(synthetic_bundle):
     bundle, frame = synthetic_bundle
     result = predict_applications(bundle, frame[MINIMAL_FIELDS].head(10))

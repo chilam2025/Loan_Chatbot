@@ -60,6 +60,12 @@ new dependency. It gained about +0.007 average precision (AP) in grouped
 training folds (95% interval +0.0035 to +0.0106) and +0.0024 on validation
 (interval -0.0039 to +0.0091, not significant).
 
+The fitted CatBoost 1.2.10 pipeline uses categorical CTR complexity 4. This is
+now explicit in the builder for reproducibility. A November 2026 promotion
+audit found that higher complexity was identical and a deeper model was
+slightly worse and inconsistent across grouped folds, so no v3 artifact was
+promoted. See `reports/modeling/prediction_improvement_phase.md`.
+
 ## Calling the model
 
 ```python

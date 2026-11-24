@@ -115,6 +115,9 @@ def build_minimal_v2_pipeline(seed=42):
                 depth=4,
                 learning_rate=0.05,
                 l2_leaf_reg=10,
+                # CatBoost 1.2.10 resolved its implicit CPU default to 4 for
+                # this fitted pipeline. Keep it explicit for reproducibility.
+                max_ctr_complexity=4,
                 loss_function="Logloss",
                 cat_features=[*CATEGORICAL_FIELDS, *HIERARCHY_COLUMNS],
                 random_seed=seed,

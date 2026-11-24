@@ -54,6 +54,11 @@ models/catboost_minimal_v2/metadata.json
 models/reference/reference_tables.json
 ```
 
+The November 2026 improvement gate retained v2: higher categorical complexity was
+identical and a deeper candidate was inconsistent and slightly worse. See
+`reports/modeling/prediction_improvement_phase.md` for the aggregate results and the
+additional outcome data required for a meaningful production improvement.
+
 | Variable | Default | Purpose |
 |---|---|---|
 | `ABC_MODEL_PROVIDER` | `trained` | `trained` for the real model; `mock` only for tests and demos |
@@ -64,6 +69,17 @@ models/reference/reference_tables.json
 | `ABC_CORS_ORIGINS` | localhost and 127.0.0.1 on ports 5173, 5500, 8080 | Browser origins allowed to call the API |
 | `ABC_LOG_LEVEL` | `INFO` | Level for decision and startup logs |
 | `ABC_DATABASE_URL` | `backend/data/abc_credit.db` (SQLite) | Database connection |
+| `ABC_ASSISTANT_PROVIDER` | `disabled` | `ollama` enables the guarded Qwen assistant |
+| `ABC_OLLAMA_MODEL` | `qwen3:4b` | Locally installed Ollama model tag |
+| `ABC_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API root |
+| `ABC_OTP_PROVIDER` | `mock` | Set to `msg91` only after DLT setup |
+| `ABC_VERIFICATION_HASH_KEY` | test-only local value | Secret used to bind a challenge to a phone without storing it |
+| `ABC_MSG91_AUTH_KEY` | unset | MSG91 secret; never commit it |
+| `ABC_MSG91_TEMPLATE_ID` | unset | DLT-mapped MSG91 OTP template |
+| `ABC_PAN_PROVIDER` | `mock` | Set to `protean` after UAT certification |
+| `ABC_PROTEAN_USER_ID` | unset | Registered Protean entity user |
+| `ABC_PROTEAN_PRIVATE_KEY_PATH` | unset | Mounted PEM signing key path |
+| `ABC_PROTEAN_PRIVATE_KEY_PASSWORD` | unset | Optional key password |
 
 If the model or tables cannot be loaded, the API still starts: `GET /ready` returns
 `503` and submissions return `503` until the files are in place and the server is
@@ -91,9 +107,18 @@ uv run --project backend uvicorn abc_credit.api.main:app --reload
 The schema separates application lifecycle metadata, validated applicant answers, and
 privacy-safe audit events. Schema changes must be delivered as Alembic migrations.
 
-## Academic verification mock
+## AI and identity providers
 
-The verification API simulates mobile OTP and PAN verification; it does not connect to
-an SMS provider, the Income Tax Department, Aadhaar, DigiLocker, or another government
-system. The mock OTP is returned in the challenge response for classroom demonstration
-only. Do not present this behavior as production identity verification.
+The optional Qwen assistant runs through Ollama and is advisory only. It receives no
+stored application state and redacts common PAN, phone and six-digit values before a
+message reaches Ollama. It cannot submit, score, approve or decline an application.
+
+MSG91 mode asks the provider to generate, deliver and verify the OTP. The full mobile
+number is retained only in browser memory during confirmation; the database stores its
+last four digits and a keyed digest. Real delivery requires Indian DLT entity, header
+and content-template approval. Mock mode remains for automated tests only.
+
+Protean mode sends PAN, legal name and date of birth transiently to the authorized
+Online PAN Verification service. The application does not persist those values. A
+registered user, matching signing certificate and successful Protean UAT are required.
+See `docs/production_integrations.md` before selecting either production provider.

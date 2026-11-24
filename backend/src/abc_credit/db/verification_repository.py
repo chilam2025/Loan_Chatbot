@@ -45,10 +45,16 @@ class InvalidOtpError(ValueError):
         super().__init__(str(attempts_remaining))
 
 
+class ChallengeMobileMismatchError(ValueError):
+    """Raised when confirmation is attempted with a different mobile number."""
+
+
 @dataclass(frozen=True)
 class OtpChallengeRecord:
     challenge_id: UUID
     expires_at: datetime
+    provider: str
+    mobile_digest: str
 
 
 @dataclass(frozen=True)
@@ -74,13 +80,21 @@ class SQLAlchemyVerificationRepository:
                 raise RepositoryNotFoundError(str(application_id))
             return self._snapshot(application)
 
+    def ensure_editable(self, application_id: UUID) -> None:
+        """Fail before contacting a provider when verification is not allowed."""
+
+        with self._session_factory() as session:
+            self._editable_application(session, application_id)
+
     def create_otp_challenge(
         self,
         application_id: UUID,
         *,
         mobile_last4: str,
-        code_digest: str,
-        salt: str,
+        mobile_digest: str,
+        provider: str,
+        code_digest: str | None,
+        salt: str | None,
         expires_at: datetime,
         attempts: int,
     ) -> OtpChallengeRecord:
@@ -100,6 +114,8 @@ class SQLAlchemyVerificationRepository:
             challenge = OtpChallengeModel(
                 id=str(uuid4()),
                 application_id=str(application_id),
+                provider=provider,
+                mobile_digest=mobile_digest,
                 code_digest=code_digest,
                 salt=salt,
                 attempts_remaining=attempts,
@@ -110,14 +126,50 @@ class SQLAlchemyVerificationRepository:
             verification.mobile_last4 = mobile_last4
             verification.updated_at = timestamp
             session.add(challenge)
-            self._audit(session, application_id, "MOCK_OTP_REQUESTED", timestamp)
-        return OtpChallengeRecord(UUID(challenge.id), _ensure_utc(challenge.expires_at))
+            self._audit(
+                session,
+                application_id,
+                "OTP_REQUESTED",
+                timestamp,
+                {"provider": provider},
+            )
+        return OtpChallengeRecord(
+            UUID(challenge.id),
+            _ensure_utc(challenge.expires_at),
+            challenge.provider,
+            challenge.mobile_digest or "",
+        )
+
+    def get_otp_challenge(
+        self,
+        application_id: UUID,
+        challenge_id: UUID,
+    ) -> OtpChallengeRecord:
+        """Return only the provider-routing fields required for confirmation."""
+
+        with self._session_factory() as session:
+            challenge = session.get(OtpChallengeModel, str(challenge_id))
+            if challenge is None or challenge.application_id != str(application_id):
+                raise ChallengeNotFoundError(str(challenge_id))
+            if challenge.consumed_at is not None:
+                raise ChallengeConsumedError(str(challenge_id))
+            if _ensure_utc(challenge.expires_at) <= datetime.now(UTC):
+                raise ChallengeExpiredError(str(challenge_id))
+            return OtpChallengeRecord(
+                UUID(challenge.id),
+                _ensure_utc(challenge.expires_at),
+                challenge.provider,
+                challenge.mobile_digest or "",
+            )
 
     def confirm_otp(
         self,
         application_id: UUID,
         challenge_id: UUID,
         code: str,
+        *,
+        mobile_digest: str,
+        provider_verified: bool | None,
     ) -> VerificationSnapshot:
         error: Exception | None = None
         with self._session_factory() as session:
@@ -130,11 +182,21 @@ class SQLAlchemyVerificationRepository:
 
             if challenge.consumed_at is not None:
                 raise ChallengeConsumedError(str(challenge_id))
+            if not challenge.mobile_digest or not compare_digest(
+                mobile_digest, challenge.mobile_digest
+            ):
+                raise ChallengeMobileMismatchError(str(challenge_id))
             if _ensure_utc(challenge.expires_at) <= timestamp:
                 challenge.consumed_at = timestamp
-                self._audit(session, application_id, "MOCK_OTP_EXPIRED", timestamp)
+                self._audit(
+                    session,
+                    application_id,
+                    "OTP_EXPIRED",
+                    timestamp,
+                    {"provider": challenge.provider},
+                )
                 error = ChallengeExpiredError(str(challenge_id))
-            elif not verify_otp(code, challenge.salt, challenge.code_digest):
+            elif not self._is_valid_code(challenge, code, provider_verified):
                 challenge.attempts_remaining -= 1
                 if challenge.attempts_remaining == 0:
                     challenge.consumed_at = timestamp
@@ -163,14 +225,40 @@ class SQLAlchemyVerificationRepository:
             raise error
         return snapshot
 
-    def record_pan_verification(self, application_id: UUID) -> VerificationSnapshot:
+    @staticmethod
+    def _is_valid_code(
+        challenge: OtpChallengeModel,
+        code: str,
+        provider_verified: bool | None,
+    ) -> bool:
+        if challenge.provider == "mock":
+            return bool(
+                challenge.salt
+                and challenge.code_digest
+                and verify_otp(code, challenge.salt, challenge.code_digest)
+            )
+        return provider_verified is True
+
+    def record_pan_verification(
+        self,
+        application_id: UUID,
+        *,
+        provider: str,
+        provider_status: str,
+    ) -> VerificationSnapshot:
         timestamp = datetime.now(UTC)
         with self._session_factory.begin() as session:
             application = self._editable_application(session, application_id)
             verification = self._get_or_create_verification(application, timestamp)
             verification.pan_verified_at = timestamp
             verification.updated_at = timestamp
-            self._audit(session, application_id, "PAN_FORMAT_MOCK_VERIFIED", timestamp)
+            self._audit(
+                session,
+                application_id,
+                "PAN_VERIFIED",
+                timestamp,
+                {"provider": provider, "provider_status": provider_status},
+            )
             self._advance_if_complete(application, verification, timestamp)
         return self.get(application_id)
 

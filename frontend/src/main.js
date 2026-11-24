@@ -2,6 +2,7 @@ import en from "./locales/en.js";
 import hi from "./locales/hi.js";
 import {
   answerQuestion,
+  askAssistant,
   confirmOtp,
   getNextQuestion,
   recordIncomeDocument,
@@ -35,12 +36,14 @@ const state = {
   progress: { answered: 0, total: 0 },
   answers: [],
   challenge: null,
+  mobileNumber: null,
   decision: null,
   busy: false,
 };
 const $ = (selector) => document.querySelector(selector);
 const messages = $("#messages");
 const form = $("#response-form");
+const assistantForm = $("#assistant-form");
 
 function readLanguage() {
   try { return localStorage.getItem("loan-chat-language") || "en"; } catch { return "en"; }
@@ -73,6 +76,9 @@ function updateChrome() {
   $("#language").value = state.language;
   $("#language").disabled = Boolean(state.applicationId);
   $("#language").title = state.applicationId ? t("languageLocked") : "";
+  $("#assistant-title").textContent = t("assistantTitle");
+  $("#assistant-description").textContent = t("assistantDescription");
+  $("#assistant-form button").textContent = t("assistantAsk");
 }
 
 function bot(text) {
@@ -154,16 +160,26 @@ function renderForm() {
     case "question":
       renderQuestionInput(state.question); break;
     case "mobile": {
-      const input = document.createElement("input"); input.type = "tel"; input.inputMode = "numeric"; input.maxLength = 10; input.autocomplete = "off";
+      const input = document.createElement("input"); input.type = "tel"; input.inputMode = "numeric"; input.maxLength = 16; input.autocomplete = "tel-national";
       field(t("mobile"), t("mobileHelp"), input); break;
     }
     case "otp": {
       const input = document.createElement("input"); input.type = "text"; input.inputMode = "numeric"; input.maxLength = 6; input.autocomplete = "one-time-code";
-      field(t("otp"), `${t("otpHelp")} ${state.challenge.mock_code}`, input); break;
+      const help = state.challenge.mock_code
+        ? `${t("otpTestHelp")} ${state.challenge.mock_code}`
+        : t("otpHelp");
+      field(t("otp"), help, input); break;
     }
     case "pan": {
-      const input = document.createElement("input"); input.type = "text"; input.maxLength = 10; input.autocomplete = "off"; input.style.textTransform = "uppercase";
-      field(t("pan"), t("panHelp"), input); break;
+      const name = document.createElement("input"); name.type = "text"; name.id = "full-name"; name.name = "full-name"; name.maxLength = 85; name.autocomplete = "name"; name.required = true;
+      const nameLabel = document.createElement("label"); nameLabel.className = "field-label"; nameLabel.htmlFor = "full-name"; nameLabel.textContent = t("legalName");
+      const dob = document.createElement("input"); dob.type = "date"; dob.id = "date-of-birth"; dob.name = "date-of-birth"; dob.autocomplete = "bday"; dob.required = true;
+      const dobLabel = document.createElement("label"); dobLabel.className = "field-label"; dobLabel.htmlFor = "date-of-birth"; dobLabel.textContent = t("dateOfBirth");
+      const input = document.createElement("input"); input.type = "password"; input.maxLength = 10; input.autocomplete = "off"; input.style.textTransform = "uppercase";
+      field(t("pan"), t("panHelp"), input);
+      form.insertBefore(nameLabel, form.firstChild); form.insertBefore(name, form.children[1]);
+      form.insertBefore(dobLabel, form.children[2]); form.insertBefore(dob, form.children[3]);
+      break;
     }
     case "document": {
       const input = document.createElement("input"); input.type = "file"; input.accept = "application/pdf,image/jpeg,image/png";
@@ -294,15 +310,21 @@ async function handleAnswer(raw) {
   showQuestionnaire(progress);
 }
 
-async function handleVerification(input) {
+async function handleVerification(input, identity = null) {
   if (state.step === "mobile") {
     // Accept common ways of writing an Indian number: spaces, dashes, +91, or a leading 0.
     const mobile = input.value.replace(/[\s-]/g, "").replace(/^(\+?91|0)(?=\d{10}$)/, "");
     if (!/^[6-9]\d{9}$/.test(mobile)) throw new Error(t("mobileError"));
     state.challenge = await requestOtp(state.applicationId, mobile);
+    state.mobileNumber = mobile;
     applicant(maskMobile(mobile)); state.step = "otp"; bot(t("otp"));
   } else if (state.step === "otp") {
-    const result = await confirmOtp(state.applicationId, state.challenge.challenge_id, input.value.trim());
+    const result = await confirmOtp(
+      state.applicationId,
+      state.challenge.challenge_id,
+      state.mobileNumber,
+      input.value.trim(),
+    );
     applicant("••••••");
     if (result.status === "MANUAL_REVIEW") {
       state.decision = { decision: "MANUAL_REVIEW" };
@@ -313,8 +335,11 @@ async function handleVerification(input) {
     state.step = "pan"; bot(t("pan"));
   } else if (state.step === "pan") {
     const pan = input.value.trim().toUpperCase();
+    const fullName = identity?.fullName;
+    const dateOfBirth = identity?.dateOfBirth;
     if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) throw new Error(t("panError"));
-    await verifyPan(state.applicationId, pan);
+    if (!fullName || !dateOfBirth) throw new Error(t("identityError"));
+    await verifyPan(state.applicationId, pan, fullName, dateOfBirth);
     applicant(t("panMasked")); state.step = "document"; bot(t("document"));
   } else if (state.step === "document") {
     const file = input.files?.[0];
@@ -334,7 +359,7 @@ function submit() {
 
 function restart() {
   messages.replaceChildren();
-  Object.assign(state, { step: "welcome", applicationId: null, question: null, progress: { answered: 0, total: 0 }, answers: [], challenge: null, decision: null, draftAnswer: undefined });
+  Object.assign(state, { step: "welcome", applicationId: null, question: null, progress: { answered: 0, total: 0 }, answers: [], challenge: null, mobileNumber: null, decision: null, draftAnswer: undefined });
   bot(t("welcome")); refresh();
 }
 
@@ -345,15 +370,39 @@ form.addEventListener("submit", (event) => {
   const raw = input.type === "file" ? "file" : input.value.trim();
   if (!raw || !input.checkValidity()) { showError(t("validationSummary")); input.focus(); return; }
   if (state.step === "question") state.draftAnswer = raw;
+  const identity = state.step === "pan" ? {
+    fullName: $("#full-name")?.value.trim(),
+    dateOfBirth: $("#date-of-birth")?.value,
+  } : null;
   withBusy(async () => {
     try {
       if (state.step === "question") await handleAnswer(raw);
-      else await handleVerification(input);
+      else await handleVerification(input, identity);
     } catch (error) {
       if (error instanceof Error && !("status" in error)) { const wrapped = new Error(error.message); wrapped.detail = error.message; throw wrapped; }
       throw error;
     }
   });
+});
+
+assistantForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = $("#assistant-message");
+  const output = $("#assistant-response");
+  const button = $("#assistant-form button");
+  const message = input.value.trim();
+  if (!message) return;
+  button.disabled = true;
+  output.textContent = t("assistantWorking");
+  try {
+    const result = await askAssistant(message, dictionaries[state.language].locale);
+    output.textContent = result.reply;
+    input.value = "";
+  } catch (error) {
+    output.textContent = errorMessage(error);
+  } finally {
+    button.disabled = false;
+  }
 });
 
 $("#language").addEventListener("change", (event) => {

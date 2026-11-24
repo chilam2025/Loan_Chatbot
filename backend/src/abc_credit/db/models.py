@@ -125,7 +125,7 @@ class VerificationModel(Base):
 
 
 class OtpChallengeModel(Base):
-    """Hashed, short-lived mock OTP challenge."""
+    """Short-lived OTP challenge without a retained full mobile number."""
 
     __tablename__ = "otp_challenges"
     __table_args__ = (
@@ -142,8 +142,11 @@ class OtpChallengeModel(Base):
         ForeignKey("applications.id", ondelete="CASCADE"),
         nullable=False,
     )
-    code_digest: Mapped[str] = mapped_column(String(64), nullable=False)
-    salt: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False, default="mock")
+    mobile_digest: Mapped[str | None] = mapped_column(String(64))
+    # Only mock mode stores a salted code digest. Real providers own the OTP.
+    code_digest: Mapped[str | None] = mapped_column(String(64))
+    salt: Mapped[str | None] = mapped_column(String(32))
     attempts_remaining: Mapped[int] = mapped_column(Integer, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

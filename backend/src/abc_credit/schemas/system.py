@@ -25,3 +25,6 @@ class ReadinessResponse(BaseModel):
     model_version: str | None
     model_provider: str | None
     reference_tables_loaded: bool
+    assistant_loaded: bool
+    assistant_model: str | None
+    verification_provider: str

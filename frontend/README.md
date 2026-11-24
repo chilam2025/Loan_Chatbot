@@ -15,9 +15,14 @@ backend, set the meta value to `http://localhost:8000/api/v1` or define
 `window.ABC_API_BASE_URL` before `main.js` loads. The API allows the configured
 local frontend origins.
 
-OTP and PAN checks are simulations. The prototype's document endpoint records
-file metadata only; it does not upload document contents. Do not use real
-personal identifiers or documents.
+OTP and PAN behavior depends on the backend provider configuration. Mock mode is for
+tests only. MSG91 mode delivers and verifies the OTP without displaying it; Protean
+mode verifies transient PAN, legal-name and date-of-birth values. The document endpoint
+still records file metadata only and does not upload contents, so the overall project
+is not yet suitable for real applicants.
+
+The separate assistant box calls the guarded Ollama/Qwen endpoint. It is for process
+questions only and must not be used for PAN, OTP, phone, Aadhaar or banking details.
 
 Decision responses include audit fields, but the interface does not display the
 probability, threshold, or numeric explanation contributions. Location is

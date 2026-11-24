@@ -8,6 +8,13 @@ from abc_credit.api.main import create_app
 from abc_credit.db.models import AuditEventModel, OtpChallengeModel, VerificationModel
 from abc_credit.services.application_service import ApplicationService
 
+MOBILE = "9876543210"
+PAN_IDENTITY = {
+    "pan": "ABCDE1234F",
+    "full_name": "Asha Sharma",
+    "date_of_birth": "1990-01-02",
+}
+
 
 def client_with_service() -> tuple[TestClient, ApplicationService]:
     service = ApplicationService()
@@ -43,7 +50,7 @@ def application_awaiting_verification(api: TestClient) -> str:
 def request_mock_otp(api: TestClient, application_id: str) -> dict[str, str]:
     response = api.post(
         f"/api/v1/applications/{application_id}/verification/otp/request",
-        json={"mobile_number": "9876543210"},
+        json={"mobile_number": MOBILE},
     )
     assert response.status_code == 200
     return response.json()
@@ -69,7 +76,7 @@ def test_complete_mock_verification_advances_application() -> None:
     assert len(challenge["mock_code"]) == 6
     mobile = api.post(
         f"/api/v1/applications/{application_id}/verification/otp/confirm",
-        json={"challenge_id": challenge["challenge_id"], "code": challenge["mock_code"]},
+        json={"challenge_id": challenge["challenge_id"], "mobile_number": MOBILE, "code": challenge["mock_code"]},
     )
     assert mobile.status_code == 200
     assert mobile.json()["mobile_verified"] is True
@@ -77,7 +84,7 @@ def test_complete_mock_verification_advances_application() -> None:
 
     pan = api.post(
         f"/api/v1/applications/{application_id}/verification/pan",
-        json={"pan": " abcde1234f "},
+        json={**PAN_IDENTITY, "pan": " abcde1234f "},
     )
     assert pan.status_code == 200
     assert pan.json()["pan_verified"] is True
@@ -112,7 +119,7 @@ def test_rejects_invalid_mobile_pan_and_document_metadata() -> None:
     )
     pan = api.post(
         f"/api/v1/applications/{application_id}/verification/pan",
-        json={"pan": "INVALID"},
+        json={**PAN_IDENTITY, "pan": "INVALID"},
     )
     path = api.post(
         f"/api/v1/applications/{application_id}/verification/documents",
@@ -150,11 +157,11 @@ def test_new_otp_request_invalidates_previous_challenge() -> None:
 
     old_confirmation = api.post(
         f"/api/v1/applications/{application_id}/verification/otp/confirm",
-        json={"challenge_id": first["challenge_id"], "code": first["mock_code"]},
+        json={"challenge_id": first["challenge_id"], "mobile_number": MOBILE, "code": first["mock_code"]},
     )
     current_confirmation = api.post(
         f"/api/v1/applications/{application_id}/verification/otp/confirm",
-        json={"challenge_id": second["challenge_id"], "code": second["mock_code"]},
+        json={"challenge_id": second["challenge_id"], "mobile_number": MOBILE, "code": second["mock_code"]},
     )
 
     assert old_confirmation.status_code == 409
@@ -170,7 +177,7 @@ def test_three_failed_otp_attempts_trigger_manual_review() -> None:
     responses = [
         api.post(
             f"/api/v1/applications/{application_id}/verification/otp/confirm",
-            json={"challenge_id": challenge["challenge_id"], "code": wrong_code},
+            json={"challenge_id": challenge["challenge_id"], "mobile_number": MOBILE, "code": wrong_code},
         )
         for _ in range(3)
     ]
@@ -195,7 +202,7 @@ def test_expired_otp_is_rejected_and_can_be_replaced() -> None:
 
     expired = api.post(
         f"/api/v1/applications/{application_id}/verification/otp/confirm",
-        json={"challenge_id": challenge["challenge_id"], "code": challenge["mock_code"]},
+        json={"challenge_id": challenge["challenge_id"], "mobile_number": MOBILE, "code": challenge["mock_code"]},
     )
     replacement = request_mock_otp(api, application_id)
 
@@ -212,7 +219,7 @@ def test_verification_requires_questionnaire_completion_and_known_application() 
 
     too_early = api.post(
         f"/api/v1/applications/{created['application_id']}/verification/otp/request",
-        json={"mobile_number": "9876543210"},
+        json={"mobile_number": MOBILE},
     )
     unknown = api.get(f"/api/v1/applications/{uuid4()}/verification")
 
@@ -226,11 +233,11 @@ def test_sensitive_verification_values_are_not_retained_in_audit_events() -> Non
     challenge = request_mock_otp(api, application_id)
     api.post(
         f"/api/v1/applications/{application_id}/verification/otp/confirm",
-        json={"challenge_id": challenge["challenge_id"], "code": challenge["mock_code"]},
+        json={"challenge_id": challenge["challenge_id"], "mobile_number": MOBILE, "code": challenge["mock_code"]},
     )
     api.post(
         f"/api/v1/applications/{application_id}/verification/pan",
-        json={"pan": "ABCDE1234F"},
+        json=PAN_IDENTITY,
     )
 
     sessions = service.repository.session_factory

@@ -120,9 +120,20 @@ def ready_for_review(api: TestClient, **answer_overrides: int | str) -> str:
     challenge = api.post(f"{base}/otp/request", json={"mobile_number": "9876543210"}).json()
     api.post(
         f"{base}/otp/confirm",
-        json={"challenge_id": challenge["challenge_id"], "code": challenge["mock_code"]},
+        json={
+            "challenge_id": challenge["challenge_id"],
+            "mobile_number": "9876543210",
+            "code": challenge["mock_code"],
+        },
     )
-    api.post(f"{base}/pan", json={"pan": "ABCDE1234F"})
+    api.post(
+        f"{base}/pan",
+        json={
+            "pan": "ABCDE1234F",
+            "full_name": "Asha Sharma",
+            "date_of_birth": "1990-01-02",
+        },
+    )
     document = api.post(
         f"{base}/documents",
         json={

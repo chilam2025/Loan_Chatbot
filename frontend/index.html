@@ -27,6 +27,16 @@
           <form id="response-form" class="response-form" novalidate></form>
           <div class="chat-footer"><span class="secure-icon" aria-hidden="true">◈</span><span id="privacy-note">Your information is handled securely.</span></div>
         </section>
+        <section class="assistant-card" aria-labelledby="assistant-title">
+          <h2 id="assistant-title">Ask the loan assistant</h2>
+          <p id="assistant-description">Ask about the application process. Do not enter PAN, OTP, phone, Aadhaar or bank details here.</p>
+          <form id="assistant-form" class="assistant-form">
+            <label class="sr-only" for="assistant-message">Question for the loan assistant</label>
+            <input id="assistant-message" maxlength="600" autocomplete="off" required />
+            <button type="submit" class="secondary-button">Ask</button>
+          </form>
+          <p id="assistant-response" class="assistant-response" aria-live="polite"></p>
+        </section>
         <p class="prototype-note" id="prototype-note">Academic prototype. Verification steps shown here are simulations.</p>
       </section>
     </main>

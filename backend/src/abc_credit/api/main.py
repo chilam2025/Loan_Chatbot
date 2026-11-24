@@ -9,11 +9,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from abc_credit import __version__
-from abc_credit.api.routers import applications, decisions, reference, system, verification
+from abc_credit.api.routers import (
+    applications,
+    assistant,
+    decisions,
+    reference,
+    system,
+    verification,
+)
 from abc_credit.db.config import get_database_url
 from abc_credit.db.decision_repository import SQLAlchemyDecisionRepository
 from abc_credit.db.verification_repository import SQLAlchemyVerificationRepository
+from abc_credit.integrations.assistant import AssistantProvider, configured_assistant
 from abc_credit.integrations.model import try_load_configured_model
+from abc_credit.integrations.verification import (
+    OtpProvider,
+    PanProvider,
+    configured_otp_provider,
+    configured_pan_provider,
+)
 from abc_credit.services.application_service import ApplicationService
 from abc_credit.services.decision_service import DecisionService
 from abc_credit.services.verification_service import VerificationService
@@ -49,6 +63,9 @@ def create_app(
     application_service: ApplicationService | None = None,
     verification_service: VerificationService | None = None,
     decision_service: DecisionService | None = None,
+    assistant_provider: AssistantProvider | None = None,
+    otp_provider: OtpProvider | None = None,
+    pan_provider: PanProvider | None = None,
 ) -> FastAPI:
     """Create an isolated API instance with explicitly configured services."""
 
@@ -65,8 +82,11 @@ def create_app(
     app.state.application_service = configured_application_service
     session_factory = configured_application_service.repository.session_factory
     app.state.verification_service = verification_service or VerificationService(
-        SQLAlchemyVerificationRepository(session_factory)
+        SQLAlchemyVerificationRepository(session_factory),
+        otp_provider or configured_otp_provider(),
+        pan_provider or configured_pan_provider(),
     )
+    app.state.assistant = assistant_provider or configured_assistant()
     # The model and reference tables are loaded once per API instance, never per request.
     # A missing artifact leaves the API up; decisions then return 503 (see /ready).
     app.state.decision_service = decision_service or DecisionService(
@@ -97,6 +117,7 @@ def create_app(
 
     app.include_router(system.router)
     app.include_router(applications.router, prefix="/api/v1")
+    app.include_router(assistant.router, prefix="/api/v1")
     app.include_router(verification.router, prefix="/api/v1")
     app.include_router(decisions.router, prefix="/api/v1")
     app.include_router(reference.router, prefix="/api/v1")
