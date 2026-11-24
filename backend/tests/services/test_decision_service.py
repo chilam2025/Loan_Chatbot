@@ -43,12 +43,13 @@ def test_payload_matches_the_ten_field_contract(reference) -> None:
         assert removed not in payload
 
 
-def test_active_loan_answer_maps_to_model_category(reference) -> None:
+@pytest.mark.parametrize("value", ["PAST_LOANS_ACTIVE", "NO_PAST_LOANS"])
+def test_active_loan_answer_maps_to_exact_model_category(reference, value: str) -> None:
     payload = build_model_payload(
-        {**ANSWERS, QuestionId.PAST_LOANS_ACTIVE: "PAST_LOANS_ACTIVE"}, reference
+        {**ANSWERS, QuestionId.PAST_LOANS_ACTIVE: value}, reference
     )
 
-    assert payload["PAST_LOANS_ACTIVE"] == "PAST_LOANS_ACTIVE"
+    assert payload["PAST_LOANS_ACTIVE"] == value
 
 
 def test_unseen_pincode_gives_null_tier(reference) -> None:

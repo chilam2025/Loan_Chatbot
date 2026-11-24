@@ -9,11 +9,16 @@ from abc_credit.modeling.ablate_catboost_features import make_model
 from abc_credit.modeling.compare_catboost import CATEGORICAL_FIELDS
 from abc_credit.modeling.explain import (
     CAVEAT,
+    FACTOR_LABELS,
     explain_application,
     factor_contributions,
     feature_contributions,
 )
 from abc_credit.modeling.inference import predict_applications
+
+
+def test_active_loan_factor_uses_value_neutral_label():
+    assert FACTOR_LABELS["PAST_LOANS_ACTIVE"] == "Active-loan status"
 
 
 @pytest.fixture(scope="module")

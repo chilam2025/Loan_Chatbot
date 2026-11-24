@@ -20,7 +20,7 @@ export default {
   prototypeDecisionNote: "यह शैक्षणिक प्रोटोटाइप पुराने फैसलों का अनुमान लगाता है। यह वास्तविक ऋण निर्णय नहीं है।",
   explanationTitle: "मॉडल ने इन कारकों पर विचार किया", factorsRaising: "अस्वीकृति का अनुमान बढ़ाने वाले कारक", factorsLowering: "अस्वीकृति का अनुमान घटाने वाले कारक",
   factorLoanVehicle: "वाहन की कीमत के मुकाबले ऋण की राशि", factorLoanAmount: "ऋण की राशि", factorAge: "उम्र",
-  factorActiveLoan: "मौजूदा सक्रिय ऋण", factorVehicle: "वाहन",
+  factorActiveLoan: "सक्रिय ऋण की स्थिति", factorVehicle: "वाहन",
   factorStrengthSlight: "हल्का प्रभाव", factorStrengthModerate: "मध्यम प्रभाव", factorStrengthStrong: "तीव्र प्रभाव",
   languageLocked: "आवेदन शुरू होने के बाद उसकी भाषा नहीं बदली जा सकती।",
 };

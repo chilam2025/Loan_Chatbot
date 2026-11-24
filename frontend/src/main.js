@@ -18,7 +18,7 @@ const SAFE_EXPLANATION_FACTORS = new Map([
   ["Loan size relative to vehicle price", "factorLoanVehicle"],
   ["Loan amount", "factorLoanAmount"],
   ["Age", "factorAge"],
-  ["Existing active loan", "factorActiveLoan"],
+  ["Active-loan status", "factorActiveLoan"],
   ["Vehicle", "factorVehicle"],
 ]);
 const EXPLANATION_STRENGTHS = new Map([

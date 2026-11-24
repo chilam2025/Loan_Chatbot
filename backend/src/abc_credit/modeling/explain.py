@@ -24,7 +24,9 @@ FACTOR_LABELS = {
     "pin4": "Location",
     "pin5": "Location",
     "Age": "Age",
-    "PAST_LOANS_ACTIVE": "Existing active loan",
+    # This factor represents either category. A value-neutral label prevents a
+    # NO_PAST_LOANS explanation from being misread as saying a loan exists.
+    "PAST_LOANS_ACTIVE": "Active-loan status",
     "Make_Code": "Vehicle",
     "Model_Variant": "Vehicle",
     "Product_Code": "Vehicle",

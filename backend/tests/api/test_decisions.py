@@ -351,7 +351,9 @@ def test_decision_includes_explanation_without_numbers_or_location() -> None:
     )
     assert factors
     assert all(set(item) == {"factor", "strength"} for item in factors)
-    assert "Location" not in {item["factor"] for item in factors}
+    factor_names = {item["factor"] for item in factors}
+    assert "Active-loan status" in factor_names
+    assert "Location" not in factor_names
     assert explanation["caveat"]
     assert api.get(f"/api/v1/applications/{application_id}/decision").json() == body
 

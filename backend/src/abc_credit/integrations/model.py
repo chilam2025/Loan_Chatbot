@@ -75,7 +75,7 @@ class MockLoanModel:
             raise ModelUnavailableError("mock model requires a numeric LTV")
         return {
             "Loan size relative to vehicle price": (ltv - 75) / 10,
-            "Existing active loan": (
+            "Active-loan status": (
                 1.0 if payload.get("PAST_LOANS_ACTIVE") == "PAST_LOANS_ACTIVE" else -0.3
             ),
             "Location": 0.1,

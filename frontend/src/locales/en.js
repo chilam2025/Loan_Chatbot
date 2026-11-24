@@ -20,7 +20,7 @@ export default {
   prototypeDecisionNote: "This academic prototype estimates historical decisions. It is not a real lending decision.",
   explanationTitle: "Factors considered", factorsRaising: "Factors raising the decline estimate", factorsLowering: "Factors lowering the decline estimate",
   factorLoanVehicle: "Loan size relative to vehicle price", factorLoanAmount: "Loan amount", factorAge: "Age",
-  factorActiveLoan: "Existing active loan", factorVehicle: "Vehicle",
+  factorActiveLoan: "Active-loan status", factorVehicle: "Vehicle",
   factorStrengthSlight: "slight influence", factorStrengthModerate: "moderate influence", factorStrengthStrong: "strong influence",
   languageLocked: "The application language is fixed after the application starts.",
   nextApproved: "Next: review the sanction documents and terms with the lender before proceeding.",
