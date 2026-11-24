@@ -44,9 +44,11 @@ function decisionPayload(decision) {
 
 async function mockApi(page, {
   decision = "APPROVED", unavailable = false, offline = false, manual = false, validationError = false,
+  resumeFailOnce = false,
 } = {}) {
   let answered = 0;
   let applicationStatus = "STARTED";
+  let shouldFailResume = resumeFailOnce;
   let verification = { mobile_verified: false, pan_verified: false, document_received: false };
   let decisionCalls = 0;
   let submittedMobile;
@@ -106,6 +108,10 @@ async function mockApi(page, {
       return route.fulfill({ json: { application_id: "e2e-app", status: "PENDING", ...verification } });
     }
     if (path === "/api/v1/applications/e2e-app" && request.method() === "GET") {
+      if (shouldFailResume) {
+        shouldFailResume = false;
+        return route.fulfill({ status: 503, json: { detail: "Temporary backend failure" } });
+      }
       return route.fulfill({ json: { application_id: "e2e-app", status: applicationStatus, locale: "en-IN" } });
     }
     if (path.endsWith("/submit") && request.method() === "POST") {
@@ -184,8 +190,11 @@ test("approved flow masks mobile and shows safe explanation and next steps", asy
   await expect(result.getByText("Active-loan status")).toBeVisible();
   await expect(result.getByText(/review the sanction documents/i)).toBeVisible();
   await expect(result).not.toContainText("0.951");
+  await expect(result).not.toContainText("0.11");
   await expect(result).not.toContainText("private-model-version");
   await expect(result).not.toContainText("Location");
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations).toEqual([]);
   await expect(page.locator("#messages")).not.toContainText("9876543210");
   expect(api.submittedMobile()).toBe("9876543210");
   await page.screenshot({ path: "test-results/decision-approved-en.png", fullPage: true });
@@ -226,7 +235,7 @@ test("readiness 503 shows localized unavailable message before application creat
   await page.goto("/");
   await page.getByRole("button", { name: "Start application" }).click();
   await page.getByRole("button", { name: "Yes, continue" }).click();
-  await expect(page.getByRole("alert")).toContainText("decision service is temporarily unavailable");
+  await expect(page.getByText("The decision service is temporarily unavailable. Please try again later.")).toBeVisible();
 });
 
 test("backend offline is announced in the selected language", async ({ page }) => {
@@ -268,6 +277,15 @@ test("application resumes at its unanswered question after reload", async ({ pag
   await expect(page.locator("#answer")).toHaveAttribute("inputmode", "numeric");
 });
 
+test("failed session recovery can be retried successfully", async ({ page }) => {
+  await mockApi(page, { resumeFailOnce: true });
+  await page.addInitScript(() => sessionStorage.setItem("loan-chat-application", JSON.stringify({ applicationId: "e2e-app" })));
+  await page.goto("/");
+  await expect(page.getByText("The decision service is temporarily unavailable. Please try again later.")).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByLabel("How old are you?")).toBeVisible();
+});
+
 test("formatted +91 mobile fits the input and is normalized before submission", async ({ page }) => {
   const api = await mockApi(page);
   await beginApplication(page); await answerQuestions(page);
@@ -285,6 +303,19 @@ test("home is keyboard reachable and meets automated accessibility rules", async
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(page.getByRole("combobox", { name: "Language" })).toBeFocused();
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations).toEqual([]);
+});
+
+test("mobile viewport has no horizontal overflow and application form passes axe", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await mockApi(page);
+  await beginApplication(page);
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations).toEqual([]);
 });
