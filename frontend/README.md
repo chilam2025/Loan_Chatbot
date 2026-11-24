@@ -40,4 +40,7 @@ From frontend/, install the locked test dependencies with npm ci, install
 Chromium with npx playwright install chromium, and run npm test. Playwright
 stubs API responses to cover approved, declined and manual-review outcomes,
 safe explanations, next steps, English and Hindi, readiness and network errors,
-reload recovery, formatted mobile input, keyboard navigation, and axe checks.
+reload recovery and retry, formatted mobile input, keyboard navigation,
+responsive layout, and axe checks. These tests do not substitute for participant
+usability sessions or a live-stack browser walkthrough. See
+[VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md) for those remaining checks.
