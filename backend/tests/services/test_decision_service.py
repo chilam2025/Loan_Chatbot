@@ -1,118 +1,138 @@
 import pytest
 
 from abc_credit.integrations.model import MockLoanModel, ModelUnavailableError
-from abc_credit.preprocessing import FEATURE_COLUMNS
-from abc_credit.schemas.decisions import DecisionOutcome
+from abc_credit.modeling.minimal_model import MINIMAL_FIELDS
 from abc_credit.schemas.questionnaire import QuestionId
 from abc_credit.services.decision_service import (
-    DECISION_THRESHOLD_ENV,
     EXPECTED_MODEL_VERSION_ENV,
-    apply_decision_rule,
-    build_model_features,
-    get_decision_threshold,
+    HIDDEN_FACTORS_ENV,
+    build_model_payload,
+    masked_payload,
+    public_explanation,
     validate_model,
 )
+from abc_credit.services.reference_data import load_configured_reference_data
 
+VEHICLE = "APACHE 200 4V 1CH - R MODE BSVI"
 ANSWERS = {
     QuestionId.AGE: 30,
-    QuestionId.QUALIFICATIONS: "GRAD",
-    QuestionId.EMPLOYMENT_TYPE: "SAL",
     QuestionId.PINCODE: "110001",
-    QuestionId.GENDER: "Female",
-    QuestionId.RESIDENT_TYPE: "O",
-    QuestionId.NET_SALARY: 75_000,
-    QuestionId.VEHICLE_PRICE: 650_000,
-    QuestionId.LOAN_AMOUNT: 500_000,
+    QuestionId.VEHICLE: VEHICLE,
+    QuestionId.VEHICLE_PRICE: 130_000,
+    QuestionId.LOAN_AMOUNT: 100_000,
     QuestionId.PAST_LOANS_ACTIVE: "NO_PAST_LOANS",
 }
 
 
-def test_features_match_the_training_contract() -> None:
-    features = build_model_features(ANSWERS)
-
-    assert set(features) == set(FEATURE_COLUMNS)
-    assert features["Net_salary"] == 75_000
-    assert features["Pincode"] == "110001"
-    assert features["LTV"] == 76.92
-    assert "vehicle_price" not in features
+@pytest.fixture
+def reference():
+    loaded = load_configured_reference_data()
+    assert loaded is not None
+    return loaded
 
 
-def test_decision_rule_is_inclusive_at_the_threshold() -> None:
-    assert apply_decision_rule(0.5, 0.5) is DecisionOutcome.APPROVED
-    assert apply_decision_rule(0.4999, 0.5) is DecisionOutcome.DECLINED
+def test_payload_matches_the_ten_field_contract(reference) -> None:
+    payload = build_model_payload(ANSWERS, reference)
+
+    assert list(payload) == MINIMAL_FIELDS
+    assert payload["LTV"] == 76.92
+    assert payload["Final_Tier"] == "01 Megapolis (A)"
+    assert payload["PAST_LOANS_ACTIVE"] == "NO_PAST_LOANS"
+    assert payload["Make_Code"] == "APACHE"
+    for removed in ("Gender", "Net_salary", "Qualifications", "Employment_Type", "Resident_Type"):
+        assert removed not in payload
 
 
-def test_threshold_defaults_and_rejects_invalid_configuration(
+def test_active_loan_answer_maps_to_model_category(reference) -> None:
+    payload = build_model_payload(
+        {**ANSWERS, QuestionId.PAST_LOANS_ACTIVE: "PAST_LOANS_ACTIVE"}, reference
+    )
+
+    assert payload["PAST_LOANS_ACTIVE"] == "PAST_LOANS_ACTIVE"
+
+
+def test_unseen_pincode_gives_null_tier(reference) -> None:
+    payload = build_model_payload({**ANSWERS, QuestionId.PINCODE: "999999"}, reference)
+
+    assert payload["Final_Tier"] is None
+
+
+def test_payload_rejects_unknown_vehicle_and_missing_answers(reference) -> None:
+    with pytest.raises(ValueError, match="catalogue"):
+        build_model_payload({**ANSWERS, QuestionId.VEHICLE: "NOT A VEHICLE"}, reference)
+    partial = {k: v for k, v in ANSWERS.items() if k is not QuestionId.PAST_LOANS_ACTIVE}
+    with pytest.raises(ValueError, match="past_loans_active"):
+        build_model_payload(partial, reference)
+
+
+def test_logged_payload_masks_pincode(reference) -> None:
+    masked = masked_payload(build_model_payload(ANSWERS, reference))
+
+    assert masked["Pincode"] == "110XXX"
+    assert "110001" not in repr(masked)
+
+
+def test_public_explanation_drops_numbers_and_hidden_factors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(DECISION_THRESHOLD_ENV, raising=False)
-    assert get_decision_threshold() == 0.5
+    raw = {
+        "decision": "DECLINED",
+        "probability_declined": 0.3,
+        "factors_raising_decline_score": [
+            {"factor": "Location", "strength": "strong", "log_odds_contribution": 0.9},
+            {"factor": "Age", "strength": "slight", "log_odds_contribution": 0.1},
+        ],
+        "factors_lowering_decline_score": [],
+        "caveat": "Not advice.",
+    }
+    monkeypatch.delenv(HIDDEN_FACTORS_ENV, raising=False)
 
-    monkeypatch.setenv(DECISION_THRESHOLD_ENV, "0.65")
-    assert get_decision_threshold() == 0.65
-
-    for invalid in ("0", "1", "abc"):
-        monkeypatch.setenv(DECISION_THRESHOLD_ENV, invalid)
-        with pytest.raises(ValueError):
-            get_decision_threshold()
+    assert public_explanation(raw) == {
+        "factors_raising_decline_score": [{"factor": "Age", "strength": "slight"}],
+        "factors_lowering_decline_score": [],
+        "caveat": "Not advice.",
+    }
 
 
-def test_mock_model_is_deterministic_and_penalises_active_loans() -> None:
+def test_mock_model_is_deterministic_and_penalises_risk(reference) -> None:
     model = MockLoanModel()
-    features = build_model_features(ANSWERS)
-    with_active_loans = {**features, "PAST_LOANS_ACTIVE": "PAST_LOANS_ACTIVE"}
+    payload = build_model_payload(ANSWERS, reference)
 
-    probability = model.predict_approval_probability(features)
+    base = model.predict(payload)
+    active = model.predict({**payload, "PAST_LOANS_ACTIVE": "PAST_LOANS_ACTIVE"})
+    high_ltv = model.predict({**payload, "LTV": 99.0})
 
-    assert probability == model.predict_approval_probability(features)
-    assert 0 <= probability <= 1
-    assert model.predict_approval_probability(with_active_loans) < probability
-
-
-def test_mock_model_rejects_missing_required_features() -> None:
+    assert base == model.predict(payload)
+    assert active.probability_declined > base.probability_declined
+    assert high_ltv.probability_declined > base.probability_declined
     with pytest.raises(ModelUnavailableError):
-        MockLoanModel().predict_approval_probability({"Net_salary": None, "Loan_Amount": 1})
-
-
-def test_ltv_is_none_when_an_amount_is_missing() -> None:
-    partial = {key: value for key, value in ANSWERS.items() if key is not QuestionId.VEHICLE_PRICE}
-
-    assert build_model_features(partial)["LTV"] is None
-
-
-def test_mock_model_penalises_high_ltv() -> None:
-    model = MockLoanModel()
-    features = build_model_features(ANSWERS)
-
-    assert model.predict_approval_probability({**features, "LTV": 95.0}) < (
-        model.predict_approval_probability(features)
-    )
+        model.predict({**payload, "LTV": None})
 
 
 class _StubModel:
-    def __init__(self, version: object, provider: object = "trained") -> None:
+    def __init__(self, version: object, provider: object = "trained", threshold: object = 0.11):
         self.version = version
         self.provider = provider
-
-    def predict_approval_probability(self, features: object) -> float:
-        return 0.5
+        self.threshold = threshold
 
 
-def test_model_version_is_validated_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_model_identity_is_validated_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(EXPECTED_MODEL_VERSION_ENV, raising=False)
     validate_model(MockLoanModel())
-    validate_model(_StubModel("rf-2026.11.1"))
+    validate_model(_StubModel("catboost-minimal-v2"))
 
     for invalid in (_StubModel(""), _StubModel(None), _StubModel("bad version!")):
         with pytest.raises(ValueError, match="model version"):
             validate_model(invalid)
     with pytest.raises(ValueError, match="provider"):
-        validate_model(_StubModel("rf-1", provider="llm"))
+        validate_model(_StubModel("v1", provider="llm"))
+    with pytest.raises(ValueError, match="threshold"):
+        validate_model(_StubModel("v1", threshold=1.5))
 
 
 def test_expected_model_version_must_match(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(EXPECTED_MODEL_VERSION_ENV, "rf-2026.11.1")
+    monkeypatch.setenv(EXPECTED_MODEL_VERSION_ENV, "catboost-minimal-v2")
 
-    validate_model(_StubModel("rf-2026.11.1"))
+    validate_model(_StubModel("catboost-minimal-v2"))
     with pytest.raises(ValueError, match="does not match"):
         validate_model(MockLoanModel())

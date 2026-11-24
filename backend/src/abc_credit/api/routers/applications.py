@@ -15,6 +15,7 @@ from abc_credit.services.application_service import (
     QuestionnaireProgress,
 )
 from abc_credit.services.questionnaire import InvalidAnswerError
+from abc_credit.services.reference_data import ReferenceDataUnavailableError
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 ApplicationServiceDependency = Annotated[ApplicationService, Depends(get_application_service)]
@@ -48,6 +49,13 @@ def get_application(
     return ApplicationResponse.model_validate(record)
 
 
+def _catalogue_unavailable(error: ReferenceDataUnavailableError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Vehicle catalogue is temporarily unavailable; please retry",
+    )
+
+
 def _questionnaire_response(progress: QuestionnaireProgress) -> QuestionnaireResponse:
     return QuestionnaireResponse(
         application_id=progress.application.application_id,
@@ -76,6 +84,8 @@ def get_next_question(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         ) from error
+    except ReferenceDataUnavailableError as error:
+        raise _catalogue_unavailable(error) from error
     return _questionnaire_response(progress)
 
 
@@ -107,4 +117,6 @@ def save_answers(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
         ) from error
+    except ReferenceDataUnavailableError as error:
+        raise _catalogue_unavailable(error) from error
     return _questionnaire_response(progress)

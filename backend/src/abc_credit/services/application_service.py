@@ -18,12 +18,15 @@ from abc_credit.db.session import (
 from abc_credit.schemas.applications import ApplicationStatus, SupportedLocale
 from abc_credit.schemas.questionnaire import AnswerInput, AnswerValue, QuestionId, QuestionResponse
 from abc_credit.services.questionnaire import (
+    QUESTION_IDS,
     QUESTIONNAIRE,
     InvalidAnswerError,
+    known_answers,
     localize_question,
     validate_answer,
     validate_answer_set,
 )
+from abc_credit.services.reference_data import ReferenceData, load_configured_reference_data
 
 
 class ApplicationNotFoundError(LookupError):
@@ -63,10 +66,19 @@ class ApplicationService:
     def __init__(
         self,
         repository: SQLAlchemyApplicationRepository | None = None,
+        reference_data: ReferenceData | None = None,
     ) -> None:
         self._repository = repository or SQLAlchemyApplicationRepository(
             create_test_session_factory()
         )
+        # Loaded once; None means the catalogue is unavailable and the vehicle step returns 503.
+        self._reference_data = reference_data or load_configured_reference_data()
+
+    @property
+    def reference_data(self) -> ReferenceData | None:
+        """Vehicle catalogue and pincode tiers shared with the decision service."""
+
+        return self._reference_data
 
     @property
     def repository(self) -> SQLAlchemyApplicationRepository:
@@ -75,12 +87,16 @@ class ApplicationService:
         return self._repository
 
     @classmethod
-    def from_database_url(cls, database_url: str) -> "ApplicationService":
+    def from_database_url(
+        cls,
+        database_url: str,
+        reference_data: ReferenceData | None = None,
+    ) -> "ApplicationService":
         """Build the production service without implicitly changing its schema."""
 
         engine = create_database_engine(database_url)
         repository = SQLAlchemyApplicationRepository(build_session_factory(engine))
-        return cls(repository)
+        return cls(repository, reference_data)
 
     def create(self, *, locale: SupportedLocale) -> ApplicationRecord:
         """Create a new application with a server-generated identifier."""
@@ -108,7 +124,7 @@ class ApplicationService:
             None,
         )
         question = (
-            localize_question(next_definition, record.locale)
+            localize_question(next_definition, record.locale, self._reference_data)
             if next_definition is not None
             else None
         )
@@ -138,7 +154,9 @@ class ApplicationService:
         if len(question_ids) != len(set(question_ids)):
             raise InvalidAnswerError("Each question may appear only once per request")
         validated = {
-            answer.question_id: validate_answer(answer.question_id, answer.value)
+            answer.question_id: validate_answer(
+                answer.question_id, answer.value, self._reference_data
+            )
             for answer in answers
         }
         validate_answer_set({**existing.answers, **validated})
@@ -146,7 +164,7 @@ class ApplicationService:
             self._repository.save_answers(
                 application_id,
                 validated,
-                total_questions=len(QUESTIONNAIRE),
+                required_questions=QUESTION_IDS,
             )
         except RepositoryNotFoundError as error:
             raise ApplicationNotFoundError(str(application_id)) from error
@@ -166,9 +184,9 @@ class ApplicationService:
             created_at=_ensure_utc(application.created_at),
             updated_at=_ensure_utc(application.updated_at),
             next_action=application.next_action,
-            answers={
-                QuestionId(answer.question_id): answer.value for answer in application.answers
-            },
+            answers=known_answers(
+                [(answer.question_id, answer.value) for answer in application.answers]
+            ),
         )
 
 

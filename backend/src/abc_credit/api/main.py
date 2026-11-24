@@ -1,5 +1,6 @@
 """FastAPI application factory and default ASGI application."""
 
+import logging
 import os
 
 from fastapi import FastAPI, Request
@@ -8,17 +9,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from abc_credit import __version__
-from abc_credit.api.routers import applications, decisions, system, verification
+from abc_credit.api.routers import applications, decisions, reference, system, verification
 from abc_credit.db.config import get_database_url
 from abc_credit.db.decision_repository import SQLAlchemyDecisionRepository
 from abc_credit.db.verification_repository import SQLAlchemyVerificationRepository
-from abc_credit.integrations.model import load_configured_model
+from abc_credit.integrations.model import try_load_configured_model
 from abc_credit.services.application_service import ApplicationService
 from abc_credit.services.decision_service import DecisionService
 from abc_credit.services.verification_service import VerificationService
 
 CORS_ORIGINS_ENV = "ABC_CORS_ORIGINS"
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+
+def configure_logging() -> None:
+    """Send abc_credit decision logs to the console (uvicorn only configures its own)."""
+
+    logger = logging.getLogger("abc_credit")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+        logger.addHandler(handler)
+    logger.setLevel(os.getenv("ABC_LOG_LEVEL", "INFO").upper())
 
 
 def get_cors_origins() -> list[str]:
@@ -35,6 +47,8 @@ def create_app(
 ) -> FastAPI:
     """Create an isolated API instance with explicitly configured services."""
 
+    configure_logging()
+
     app = FastAPI(
         title="ABC Credit Loan Application API",
         summary="Backend API for the India-focused loan application chatbot.",
@@ -48,10 +62,12 @@ def create_app(
     app.state.verification_service = verification_service or VerificationService(
         SQLAlchemyVerificationRepository(session_factory)
     )
-    # The model is loaded once per API instance, never per request.
+    # The model and reference tables are loaded once per API instance, never per request.
+    # A missing artifact leaves the API up; decisions then return 503 (see /ready).
     app.state.decision_service = decision_service or DecisionService(
         SQLAlchemyDecisionRepository(session_factory),
-        load_configured_model(),
+        try_load_configured_model(),
+        configured_application_service.reference_data,
     )
 
     app.add_middleware(
@@ -78,6 +94,7 @@ def create_app(
     app.include_router(applications.router, prefix="/api/v1")
     app.include_router(verification.router, prefix="/api/v1")
     app.include_router(decisions.router, prefix="/api/v1")
+    app.include_router(reference.router, prefix="/api/v1")
     return app
 
 

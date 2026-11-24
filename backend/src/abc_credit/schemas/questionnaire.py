@@ -10,15 +10,15 @@ from abc_credit.schemas.applications import ApplicationStatus
 
 
 class QuestionId(StrEnum):
-    """Applicant-provided fields collected by the chatbot."""
+    """Applicant-provided fields for the six-question model contract (catboost-minimal-v2).
+
+    Gender, qualification, employment type, residence type and net salary are
+    deliberately not collected: the model does not use them (docs/model/model_contract_minimal.md).
+    """
 
     AGE = "age"
-    QUALIFICATIONS = "qualifications"
-    EMPLOYMENT_TYPE = "employment_type"
     PINCODE = "pincode"
-    GENDER = "gender"
-    RESIDENT_TYPE = "resident_type"
-    NET_SALARY = "net_salary"
+    VEHICLE = "vehicle"
     VEHICLE_PRICE = "vehicle_price"
     LOAN_AMOUNT = "loan_amount"
     PAST_LOANS_ACTIVE = "past_loans_active"

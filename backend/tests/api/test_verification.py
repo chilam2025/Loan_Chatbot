@@ -17,14 +17,10 @@ def client_with_service() -> tuple[TestClient, ApplicationService]:
 def valid_answers() -> list[dict[str, int | str]]:
     return [
         {"question_id": "age", "value": 30},
-        {"question_id": "qualifications", "value": "GRAD"},
-        {"question_id": "employment_type", "value": "SAL"},
         {"question_id": "pincode", "value": "110001"},
-        {"question_id": "gender", "value": "Female"},
-        {"question_id": "resident_type", "value": "O"},
-        {"question_id": "net_salary", "value": 75_000},
-        {"question_id": "vehicle_price", "value": 650_000},
-        {"question_id": "loan_amount", "value": 500_000},
+        {"question_id": "vehicle", "value": "APACHE 200 4V 1CH - R MODE BSVI"},
+        {"question_id": "vehicle_price", "value": 150_000},
+        {"question_id": "loan_amount", "value": 100_000},
         {"question_id": "past_loans_active", "value": "NO_PAST_LOANS"},
     ]
 

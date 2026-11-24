@@ -1,0 +1,58 @@
+{
+ "options": {
+  "Final_Tier": [
+   "01 Megapolis (A)",
+   "02 Megapolis (B)",
+   "03 Large Metro",
+   "04 Metro",
+   "05 Urban",
+   "06 Semi-Urban",
+   "07 Rural"
+  ],
+  "Make_Code": [
+   "APACHE",
+   "CITY PLUS",
+   "JUPITER",
+   "MOPEDS",
+   "NTORQ",
+   "RADEON",
+   "RAIDER",
+   "RONIN",
+   "SCOOTY",
+   "SPORT",
+   "TVS",
+   "ZEST"
+  ],
+  "PAST_LOANS_ACTIVE": [
+   "NO_PAST_LOANS",
+   "PAST_LOANS_ACTIVE"
+  ],
+  "Product_Code": [
+   "EB",
+   "MC",
+   "MO",
+   "SC"
+  ]
+ },
+ "pincode_tier": {
+  "110001": "01 Megapolis (A)",
+  "560002": "02 Megapolis (B)"
+ },
+ "vehicle_catalogue": {
+  "APACHE 200 4V 1CH - R MODE BSVI": {
+   "Make_Code": "APACHE",
+   "Model_Variant": "RTR 200CC",
+   "Product_Code": "MC"
+  },
+  "IQUBE EV": {
+   "Make_Code": "TVS",
+   "Model_Variant": "EBIKE",
+   "Product_Code": "EB"
+  },
+  "JUPITER 125 BSVI - DISC": {
+   "Make_Code": "JUPITER",
+   "Model_Variant": "125 CC DISC",
+   "Product_Code": "SC"
+  }
+ }
+}

@@ -72,7 +72,7 @@ class SQLAlchemyApplicationRepository:
         application_id: UUID,
         answers: dict[QuestionId, AnswerValue],
         *,
-        total_questions: int,
+        required_questions: frozenset[QuestionId],
     ) -> ApplicationModel:
         """Upsert validated answers and lifecycle state in one transaction."""
 
@@ -103,7 +103,10 @@ class SQLAlchemyApplicationRepository:
                     stored.value = value
                     stored.updated_at = timestamp
 
-            complete = len(application.answers) == total_questions
+            # Compare identifiers, not counts, so legacy answers from older questionnaires
+            # (e.g. gender, net_salary) can never complete the current one.
+            stored_ids = {answer.question_id for answer in application.answers}
+            complete = {question.value for question in required_questions} <= stored_ids
             application.status = (
                 ApplicationStatus.AWAITING_VERIFICATION.value
                 if complete

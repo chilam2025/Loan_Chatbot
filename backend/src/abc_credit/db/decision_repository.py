@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -13,6 +14,7 @@ from abc_credit.db.session import SessionFactory
 from abc_credit.schemas.applications import ApplicationStatus
 from abc_credit.schemas.decisions import DecisionOutcome
 from abc_credit.schemas.questionnaire import AnswerValue, QuestionId
+from abc_credit.services.questionnaire import known_answers
 
 
 class IncompleteAnswersError(ValueError):
@@ -28,13 +30,14 @@ class DecisionRecord:
     application_id: UUID
     status: ApplicationStatus
     decision: DecisionOutcome
-    approval_probability: float
+    probability_declined: float
     threshold: float
     model_version: str
     model_provider: str
     latency_ms: float
     decided_at: datetime
     next_action: str
+    explanation: dict[str, Any] | None = None
 
 
 class SQLAlchemyDecisionRepository:
@@ -79,9 +82,9 @@ class SQLAlchemyDecisionRepository:
                 raise RepositoryNotFoundError(str(application_id))
             if claimed != 1:
                 raise RepositoryStateConflictError(application.status)
-            answers = {
-                QuestionId(answer.question_id): answer.value for answer in application.answers
-            }
+            answers = known_answers(
+                [(answer.question_id, answer.value) for answer in application.answers]
+            )
             missing = required_questions - answers.keys()
             if missing:
                 raise IncompleteAnswersError(sorted(question.value for question in missing))
@@ -93,23 +96,29 @@ class SQLAlchemyDecisionRepository:
         application_id: UUID,
         *,
         decision: DecisionOutcome,
-        approval_probability: float,
+        probability_declined: float,
         threshold: float,
         model_version: str,
         model_provider: str,
         latency_ms: float,
+        explanation: dict[str, Any] | None = None,
+        audit_details: dict[str, Any] | None = None,
     ) -> DecisionRecord:
+        """Store the decision; ``audit_details`` carries masked model inputs for the log."""
+
         timestamp = datetime.now(UTC)
         with self._session_factory.begin() as session:
             application = self._submitted_application(session, application_id)
             application.decision = DecisionModel(
                 decision=decision.value,
-                approval_probability=approval_probability,
+                approval_probability=1 - probability_declined,
+                probability_declined=probability_declined,
                 threshold=threshold,
                 model_version=model_version,
                 model_provider=model_provider,
                 latency_ms=latency_ms,
                 decided_at=timestamp,
+                explanation=explanation,
             )
             application.status = decision.value
             application.next_action = _next_action(decision)
@@ -121,11 +130,12 @@ class SQLAlchemyDecisionRepository:
                 timestamp,
                 {
                     "decision": decision.value,
-                    "approval_probability": approval_probability,
+                    "probability_declined": probability_declined,
                     "threshold": threshold,
                     "model_version": model_version,
                     "model_provider": model_provider,
                     "latency_ms": latency_ms,
+                    **(audit_details or {}),
                 },
             )
         return self.get_decision(application_id)
@@ -165,13 +175,18 @@ class SQLAlchemyDecisionRepository:
                 application_id=application_id,
                 status=ApplicationStatus(application.status),
                 decision=DecisionOutcome(stored.decision),
-                approval_probability=stored.approval_probability,
+                probability_declined=(
+                    stored.probability_declined
+                    if stored.probability_declined is not None
+                    else 1 - stored.approval_probability
+                ),
                 threshold=stored.threshold,
                 model_version=stored.model_version,
                 model_provider=stored.model_provider,
                 latency_ms=stored.latency_ms,
                 decided_at=_ensure_utc(stored.decided_at),
                 next_action=application.next_action,
+                explanation=stored.explanation,
             )
 
     @staticmethod

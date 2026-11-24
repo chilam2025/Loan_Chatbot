@@ -201,10 +201,14 @@ class DecisionModel(Base):
     )
     decision: Mapped[str] = mapped_column(String(16), nullable=False)
     approval_probability: Mapped[float] = mapped_column(Float, nullable=False)
+    # From revision 0004 this is the model's decline cutoff (DECLINED if score >= threshold).
     threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    probability_declined: Mapped[float | None] = mapped_column(Float)
     model_version: Mapped[str] = mapped_column(String(64), nullable=False)
     model_provider: Mapped[str] = mapped_column(String(16), nullable=False)
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Factor names and strengths only (no raw values, no numbers), safe to show applicants.
+    explanation: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     application: Mapped[ApplicationModel] = relationship(back_populates="decision")

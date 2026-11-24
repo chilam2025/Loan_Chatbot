@@ -1,38 +1,33 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from abc_credit.integrations.model import (
+    DEFAULT_TRAINED_MODEL_PATH,
     MODEL_PATH_ENV,
     MODEL_PROVIDER_ENV,
     MockLoanModel,
     ModelUnavailableError,
     TrainedLoanModel,
     load_configured_model,
+    try_load_configured_model,
 )
-from abc_credit.schemas.decisions import DecisionOutcome
+from abc_credit.modeling.minimal_model import MINIMAL_FIELDS
 from abc_credit.schemas.questionnaire import QuestionId
-from abc_credit.services.decision_service import (
-    DECISION_THRESHOLD_ENV,
-    DecisionService,
-    apply_decision_rule,
-    build_model_features,
+from abc_credit.services.decision_service import build_model_payload
+from abc_credit.services.reference_data import (
+    DEFAULT_REFERENCE_TABLES_PATH,
+    ReferenceData,
+    load_configured_reference_data,
 )
 
-FEATURES = [
-    "Age", "Loan_Amount", "LTV", "Net_salary", "Qualifications", "Employment_Type",
-    "Pincode", "Product_Code", "Resident_Type", "Final_Tier", "Make_Code",
-    "Model_Description", "Model_Variant", "PAST_LOANS_ACTIVE",
-]
 ANSWERS = {
     QuestionId.AGE: 30,
-    QuestionId.QUALIFICATIONS: "GRAD",
-    QuestionId.EMPLOYMENT_TYPE: "SAL",
-    QuestionId.PINCODE: "110001",
-    QuestionId.GENDER: "Female",
-    QuestionId.RESIDENT_TYPE: "O",
-    QuestionId.NET_SALARY: 75_000,
-    QuestionId.VEHICLE_PRICE: 650_000,
-    QuestionId.LOAN_AMOUNT: 500_000,
+    QuestionId.PINCODE: "560002",
+    QuestionId.VEHICLE: "APACHE 200 4V 1CH - R MODE BSVI",
+    QuestionId.VEHICLE_PRICE: 120_000,
+    QuestionId.LOAN_AMOUNT: 80_000,
     QuestionId.PAST_LOANS_ACTIVE: "NO_PAST_LOANS",
 }
 
@@ -51,72 +46,87 @@ class FakePipeline:
         return np.array([[1 - self.declined, self.declined]] * len(frame))
 
 
-def bundle(declined: float, threshold: float = 0.2) -> dict:
+def bundle(declined: float, threshold: float = 0.11018) -> dict:
     return {
         "pipeline": FakePipeline(declined),
         "metadata": {
-            "model_version": "catboost-pincode-prefix-v1",
+            "model_version": "catboost-minimal-v2",
             "threshold": threshold,
-            "feature_columns": FEATURES,
+            "feature_columns": MINIMAL_FIELDS,
         },
     }
 
 
-def test_adapter_converts_decline_score_to_approval_probability() -> None:
-    model = TrainedLoanModel(bundle(declined=0.15))
-
-    assert model.provider == "trained"
-    assert model.version == "catboost-pincode-prefix-v1"
-    assert model.predict_approval_probability(build_model_features(ANSWERS)) == pytest.approx(0.85)
-    assert model.default_threshold == pytest.approx(0.8)
+@pytest.fixture
+def payload():
+    reference = load_configured_reference_data()
+    assert reference is not None
+    return build_model_payload(ANSWERS, reference)
 
 
-@pytest.mark.parametrize(("declined", "expected"), [
-    (0.10, DecisionOutcome.APPROVED),
-    (0.30, DecisionOutcome.DECLINED),
-])
-def test_adapter_reproduces_the_packaged_decision(declined, expected) -> None:
-    model = TrainedLoanModel(bundle(declined=declined, threshold=0.2))
-    probability = model.predict_approval_probability(build_model_features(ANSWERS))
+@pytest.mark.parametrize(("declined", "expected"), [(0.05, "APPROVED"), (0.11018, "DECLINED")])
+def test_adapter_uses_the_packaged_threshold(payload, declined, expected) -> None:
+    model = TrainedLoanModel(bundle(declined=declined))
+    prediction = model.predict(payload)
 
-    assert apply_decision_rule(probability, model.default_threshold) is expected
+    assert model.threshold == pytest.approx(0.11018)
+    assert prediction.decision == expected
+    assert prediction.probability_declined == pytest.approx(declined)
+    assert prediction.model_version == "catboost-minimal-v2"
 
 
-def test_gender_and_extra_fields_never_reach_the_model() -> None:
+def test_only_contract_fields_reach_the_model(payload) -> None:
     model_bundle = bundle(declined=0.1)
-    TrainedLoanModel(model_bundle).predict_approval_probability(build_model_features(ANSWERS))
+    TrainedLoanModel(model_bundle).predict({**payload, "Gender": "Female", "Net_salary": 1})
 
-    assert model_bundle["pipeline"].seen_columns == FEATURES
+    assert model_bundle["pipeline"].seen_columns == MINIMAL_FIELDS
 
 
 def test_rejected_input_is_reported_as_model_unavailable() -> None:
-    model = TrainedLoanModel(bundle(declined=0.1))
-
     with pytest.raises(ModelUnavailableError):
-        model.predict_approval_probability({"Age": 30})
-
-
-def test_service_uses_the_packaged_threshold_unless_overridden(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    model = TrainedLoanModel(bundle(declined=0.1, threshold=0.2))
-
-    monkeypatch.delenv(DECISION_THRESHOLD_ENV, raising=False)
-    assert DecisionService(object(), model)._threshold == pytest.approx(0.8)  # type: ignore[arg-type]
-
-    monkeypatch.setenv(DECISION_THRESHOLD_ENV, "0.6")
-    assert DecisionService(object(), model)._threshold == 0.6  # type: ignore[arg-type]
+        TrainedLoanModel(bundle(declined=0.1)).predict({"Age": 30})
 
 
 def test_model_provider_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    monkeypatch.delenv(MODEL_PROVIDER_ENV, raising=False)
+    monkeypatch.setenv(MODEL_PROVIDER_ENV, "mock")
     assert isinstance(load_configured_model(), MockLoanModel)
 
     monkeypatch.setenv(MODEL_PROVIDER_ENV, "trained")
     monkeypatch.setenv(MODEL_PATH_ENV, str(tmp_path / "missing.joblib"))
     with pytest.raises(FileNotFoundError):
         load_configured_model()
+    assert try_load_configured_model() is None
 
     monkeypatch.setenv(MODEL_PROVIDER_ENV, "other")
     with pytest.raises(ValueError):
         load_configured_model()
+
+
+def test_default_paths_point_to_the_handoff_layout() -> None:
+    assert DEFAULT_TRAINED_MODEL_PATH.parts[-3:] == (
+        "models", "catboost_minimal_v2", "decision_model.joblib"
+    )
+    assert DEFAULT_REFERENCE_TABLES_PATH.parts[-3:] == (
+        "models", "reference", "reference_tables.json"
+    )
+
+
+@pytest.mark.skipif(
+    not (Path(DEFAULT_TRAINED_MODEL_PATH).is_file() and DEFAULT_REFERENCE_TABLES_PATH.is_file()),
+    reason="private model artifact (model_handoff.zip) is not unzipped in models/",
+)
+def test_real_artifact_scores_and_explains_a_payload() -> None:
+    model = TrainedLoanModel.from_path(DEFAULT_TRAINED_MODEL_PATH)
+    reference = ReferenceData.from_path(DEFAULT_REFERENCE_TABLES_PATH)
+    real_payload = build_model_payload(ANSWERS, reference)
+
+    prediction = model.predict(real_payload)
+    explanation = model.explain(real_payload)
+
+    assert model.version == "catboost-minimal-v2"
+    assert len(reference.vehicles) == 87
+    assert 0 <= prediction.probability_declined <= 1
+    assert prediction.decision == explanation["decision"]
+    assert explanation["factors_raising_decline_score"] or explanation[
+        "factors_lowering_decline_score"
+    ]

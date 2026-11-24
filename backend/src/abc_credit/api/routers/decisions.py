@@ -9,11 +9,12 @@ from abc_credit.api.dependencies import get_decision_service
 from abc_credit.db.decision_repository import DecisionRecord
 from abc_credit.integrations.model import ModelUnavailableError
 from abc_credit.schemas.applications import ApplicationStatus
-from abc_credit.schemas.decisions import DecisionResponse
+from abc_credit.schemas.decisions import DecisionExplanation, DecisionResponse
 from abc_credit.services.decision_service import (
     DecisionNotFoundError,
     DecisionService,
     DecisionStateError,
+    InvalidSubmissionError,
     MissingAnswersError,
 )
 
@@ -32,12 +33,17 @@ def _response(record: DecisionRecord) -> DecisionResponse:
         application_id=record.application_id,
         status=record.status,
         decision=record.decision,
-        approval_probability=record.approval_probability,
+        probability_declined=record.probability_declined,
         threshold=record.threshold,
         model_version=record.model_version,
         model_provider=record.model_provider,  # type: ignore[arg-type]
         decided_at=record.decided_at,
         next_action=record.next_action,
+        explanation=(
+            DecisionExplanation.model_validate(record.explanation)
+            if record.explanation
+            else None
+        ),
     )
 
 
@@ -67,6 +73,11 @@ def submit_application(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Application is missing required answers: {error}",
+        ) from error
+    except InvalidSubmissionError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Application answers cannot be scored: {error}",
         ) from error
     except ModelUnavailableError as error:
         raise HTTPException(
