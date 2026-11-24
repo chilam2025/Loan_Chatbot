@@ -129,6 +129,7 @@ async function beginApplication(page, locale = "en") {
   await page.goto("/");
   if (locale === "hi") await page.getByRole("combobox", { name: "Language" }).selectOption("hi");
   await page.getByRole("button", { name: locale === "hi" ? "आवेदन शुरू करें" : "Start application" }).click();
+  await expect(page.getByRole("button", { name: locale === "hi" ? "हाँ, आगे बढ़ें" : "Yes, continue" })).toBeVisible();
   await page.getByRole("button", { name: locale === "hi" ? "हाँ, आगे बढ़ें" : "Yes, continue" }).click();
 }
 
@@ -230,12 +231,12 @@ test("Hindi flow localizes active-loan explanation and next step", async ({ page
   await page.screenshot({ path: "test-results/decision-declined-hi.png", fullPage: true });
 });
 
-test("readiness 503 shows localized unavailable message before application creation", async ({ page }) => {
+test("readiness 503 shows localized unavailable message before consent", async ({ page }) => {
   await mockApi(page, { unavailable: true });
   await page.goto("/");
   await page.getByRole("button", { name: "Start application" }).click();
-  await page.getByRole("button", { name: "Yes, continue" }).click();
   await expect(page.getByText("The decision service is temporarily unavailable. Please try again later.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Yes, continue" })).toHaveCount(0);
 });
 
 test("backend offline is announced in the selected language", async ({ page }) => {
@@ -243,8 +244,8 @@ test("backend offline is announced in the selected language", async ({ page }) =
   await page.goto("/");
   await page.getByRole("combobox", { name: "Language" }).selectOption("hi");
   await page.getByRole("button", { name: "आवेदन शुरू करें" }).click();
-  await page.getByRole("button", { name: "हाँ, आगे बढ़ें" }).click();
   await expect(page.getByRole("alert")).toContainText("आवेदन सेवा");
+  await expect(page.getByRole("button", { name: "हाँ, आगे बढ़ें" })).toHaveCount(0);
 });
 
 test("backend validation detail is localized instead of exposing English API text", async ({ page }) => {

@@ -169,7 +169,7 @@ function renderForm() {
   form.replaceChildren(); form.hidden = false;
   switch (state.step) {
     case "welcome":
-      form.append(button(t("startButton"), () => { state.step = "consent"; bot(t("consent")); refresh(); }));
+      form.append(button(t("startButton"), showConsent));
       return;
     case "consent":
       form.append(
@@ -312,6 +312,17 @@ function begin() {
     state.applicationId = created.application_id;
     persistSession();
     showQuestionnaire(await getNextQuestion(state.applicationId));
+  });
+}
+
+function showConsent() {
+  return withBusy(async () => {
+    const readiness = await getReadiness();
+    if (readiness.status !== "ready" || !readiness.model_loaded || !readiness.reference_tables_loaded) {
+      const error = new Error("Readiness check failed"); error.status = 503; throw error;
+    }
+    state.step = "consent";
+    bot(t("consent"));
   });
 }
 
