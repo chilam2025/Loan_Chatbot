@@ -18,6 +18,9 @@ def load_model(path):
         "random-forest-v1",
         "catboost-vehicle-value-v1",
         "catboost-pincode-prefix-v1",
+        "catboost-pincode-prefix-f1-v1",
+        "catboost-minimal-v1",
+        "catboost-minimal-v2",
     }
 
     if metadata["model_version"] not in supported_versions:

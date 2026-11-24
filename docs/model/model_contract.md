@@ -1,78 +1,155 @@
-# Model Contract — catboost-pincode-prefix-v1
+> Superseded for the chatbot flow by model_contract_minimal.md (five questions).
+# Model contract: five-question model (`catboost-minimal-v2`)
 
-## Purpose
+**Owner:** Person 1 (machine learning). **Status:** draft for review by
+Persons 2 and 3. Replaces the 14-field contract for the chatbot flow. `catboost-minimal-v1`
+(same inputs, no pincode hierarchy) stays available as a fallback.
 
-Predict historical loan approval decisions (`APPROVED` or `DECLINED`) for the academic prototype. The model's target is the historical decision. Repayment and default outcomes are outside its scope.
+## What the model predicts
 
-## Artifact and prediction interface
+The probability that the historical decision for an application was
+DECLINED. The label is a historical decision, not repayment behaviour. The
+decision is `DECLINED` when `probability_declined >= threshold`, otherwise
+`APPROVED`. `MANUAL_REVIEW` is a backend policy and never comes from the model.
 
-- Model version: `catboost-pincode-prefix-v1`
-- Local artifact: `models/catboost_pincode_prefix_v1/decision_model.joblib`
-- Package metadata: `models/catboost_pincode_prefix_v1/metadata.json`
+## Questions to ask the applicant
 
-Load only trusted artifacts using `abc_credit.modeling.inference.load_model(path)`. Load the bundle once at backend startup and reuse it.
-
-Call `abc_credit.modeling.inference.predict_applications(bundle, records)` with a list of application dictionaries or a pandas DataFrame. The function returns a DataFrame with one row per application.
-
-Loading requires the project source and compatible dependency versions. The metadata records those versions. Keep the trained artifact outside Git and transfer it through the team's private handoff process.
-
-## Required inputs
-
-| Field | Type | Meaning |
+| Question id | Meaning | Notes |
 |---|---|---|
-| `Age` | Numeric | Age in years |
-| `Loan_Amount` | Numeric | Requested loan in INR |
-| `LTV` | Numeric | Loan-to-value percentage. For example, `80` means 80%. |
-| `Net_salary` | Numeric | Self-reported monthly income in INR |
-| `Qualifications` | String | Qualification category |
-| `Employment_Type` | String | Employment category |
-| `Pincode` | String | Original six-digit Indian postal code, including leading zeros |
-| `Product_Code` | String | Vehicle product category |
-| `Resident_Type` | String | Residence category |
-| `Final_Tier` | String | Location tier |
-| `Make_Code` | String | Vehicle make or family |
-| `Model_Description` | String | Vehicle model description |
-| `Model_Variant` | String | Vehicle variant |
-| `PAST_LOANS_ACTIVE` | String | Existing active-loan category |
+| `age` | Age in years | Eligibility limits belong to the backend (see below) |
+| `pincode` | Six-digit Indian pincode | Exactly six digits |
+| `vehicle` | One vehicle chosen from the catalogue | Exact `Model_Description` text |
+| `loan_amount` | Requested loan in INR | Greater than zero |
+| `vehicle_price` | Vehicle price in INR | Greater than zero; used to calculate LTV |
+| `past_loans_active` | Does the applicant have an active loan? | true or false |
 
-## Input handling
+**Do not ask** for gender, qualification, employment type, residence type or
+net salary. The model does not use them (tested: removing them changes
+average precision by about 0.003), and gender is deliberately excluded.
+Supplying them does no harm: they are ignored.
 
-- Include every required field in each application. Use `null` or `None` to represent a missing value where the application rules allow it.
-- The inference function rejects malformed and infinite numeric values and ignores extra fields. `ID`, `Decision`, and `Gender` are excluded from the model inputs.
-- Categorical values are trimmed, and their original case is preserved. CatBoost can process categories it did not encounter during training.
-- Send `Pincode` as a six-digit string, preserving leading zeros. The pipeline trims surrounding whitespace, takes the first three digits of a valid code, and treats invalid or missing codes as missing.
-- Send the original `LTV`. The pipeline replaces zero or missing LTV with the training median and adds a missing-or-zero indicator. Zero income is preserved.
-- The pipeline derives implied vehicle value as `Loan_Amount / (original LTV / 100)` when the original LTV is greater than zero and at most 100. For other LTV values, the derived feature stays missing.
+## The ten model input fields (`feature_columns`)
 
-The backend should pass the original fields to the pipeline and enforce the team's agreed application validation rules separately.
+| Field | Type | Source |
+|---|---|---|
+| `Age` | number | answer `age` |
+| `Loan_Amount` | number | answer `loan_amount` |
+| `LTV` | number, in (0, 100] | `loan_amount / vehicle_price * 100`, rounded to 2 decimals |
+| `Pincode` | six-digit string | answer `pincode` (keep leading zeros) |
+| `Final_Tier` | text or null | lookup from pincode in `reference_tables.json` |
+| `PAST_LOANS_ACTIVE` | `PAST_LOANS_ACTIVE` or `NO_PAST_LOANS` | answer `past_loans_active` |
+| `Make_Code`, `Model_Variant`, `Product_Code` | text | lookup from the chosen vehicle |
+| `Model_Description` | text | answer `vehicle` |
 
-## Output
+`abc_credit.modeling.reference_tables.build_minimal_payload(answers, tables)`
+builds this payload and rejects invalid answers with `ValueError`. Use it
+instead of re-implementing the derivation.
 
-| Field | Meaning |
+Reference tables: run
+`python -m uv run --project backend python -m abc_credit.modeling.reference_tables`
+to create `models/reference/reference_tables.json` (13,981 pincodes, 87
+vehicles, all one-to-one). They hold no applicant rows. Share the file with the
+model artifact. An unseen pincode gives `Final_Tier = null`, which the model
+accepts. A vehicle outside the catalogue must be rejected by the backend.
+
+## What changed in v2
+
+v2 adds 2-, 4- and 5-digit pincode prefixes as extra location features,
+derived inside the model from the same `Pincode` input. No new question and no
+new dependency. It gained about +0.007 average precision (AP) in grouped
+training folds (95% interval +0.0035 to +0.0106) and +0.0024 on validation
+(interval -0.0039 to +0.0091, not significant).
+
+## Calling the model
+
+```python
+from abc_credit.modeling.inference import load_model, predict_applications
+bundle = load_model(path_to_decision_model_joblib)      # once, at startup
+result = predict_applications(bundle, [payload])         # one row per call
+```
+
+Output columns: `decision`, `probability_declined`, `threshold`,
+`model_version`. Missing required fields raise `ValueError`; malformed or
+infinite numbers raise `ValueError`; missing values and unseen categories are
+accepted. If the artifact cannot be loaded, return HTTP 503.
+
+Optional explanation for the chatbot (no raw values returned):
+
+```python
+from abc_credit.modeling.explain import explain_application
+explanation = explain_application(bundle, payload, top_k=3)
+```
+
+The language model may only rephrase the returned factors. It must not change
+the decision, quote numbers, suggest how to improve a score, or mention
+gender. Location is a sensitive factor; the team decides whether to show it.
+
+## Cutoff and operating points
+
+Locked cutoff: **0.11018**, the setting that reaches 40% DECLINED recall on
+held-out training predictions (it flags about 12% of applications). The
+F1-optimal cutoff (0.12305) is stored in `metadata.json` for reference.
+Alternatives from the same held-out scores:
+
+| Target recall | Cutoff | Precision | Share of applications flagged |
+|---|---|---|---|
+| 30% | 0.1361 | 20.7% | 7.6% |
+| 40% (locked) | 0.1102 | 18.0% | 11.7% |
+| 50% | 0.0900 | 15.6% | 16.9% |
+| 60% | 0.0735 | 13.8% | 22.9% |
+
+The cutoff is a business trade-off: a stricter cutoff rejects fewer good
+customers but misses more risky applicants; a looser one catches more risky
+applicants and wrongly flags more good ones. The 40% setting was chosen to put
+weight on DECLINED recall, as the brief asks, without flagging more than about
+one application in eight.
+
+## Validation performance (16,260 applications, 854 historical declines)
+
+At the locked cutoff 0.11018:
+
+| Measure | Value |
 |---|---|
-| `decision` | `APPROVED` or `DECLINED` |
-| `probability_declined` | Uncalibrated CatBoost score between 0 and 1 for a historical `DECLINED` decision |
-| `threshold` | `0.2014630886001852` for this package |
-| `model_version` | `catboost-pincode-prefix-v1` |
+| Accuracy (always-approve baseline: 94.75%) | 86.64% |
+| Balanced accuracy / macro F1 | 64.3% / 0.582 |
+| APPROVED precision / recall / F1 | 96.37% / 89.26% / 0.927 |
+| DECLINED precision / recall / F1 | 16.88% / 39.34% / 0.236 |
+| Average precision / AUC / Brier | 0.1827 / 0.7766 / 0.0464 |
+| Confusion matrix (APPROVED, DECLINED order) | [[13751, 1655], [518, 336]] |
 
-A score at or above the threshold produces `DECLINED`. A score below it produces `APPROVED`.
+Applications with unseen applicant profiles: DECLINED recall 38.73%,
+precision 16.50%. Single-application inference: median 14.2 ms, p95 24.2 ms
+(sandbox; re-measure on the target machine; excludes startup, network and API
+time).
 
-The threshold was selected on development validation using an illustrative cost of 5 per missed historical decline and 1 per historical approval flagged as a decline. See the [model card](model_card.md) for validation results, timing, and limitations.
+## Batch scoring
 
-## Backend integration safeguards
+`python -m abc_credit.modeling.predict_batch --input file.csv` reads a CSV with
+the dataset's original column names, writes `ID, Decision,
+probability_declined, threshold, model_version`, and prints both-class
+metrics if the file has a labeled `Decision` column.
 
-- Configure the backend explicitly to load the prefix artifact. Packaging the model alone does not change the API configuration.
-- Use the model's returned `decision` as the prototype prediction. The language model must not override it.
-- Return structured errors for missing required fields, invalid inputs, and model failures. Avoid automatic approval on errors.
-- Mask personal information in logs.
-- Apply any age eligibility rule separately and only after the team agrees on it.
-- A catalogue selection may populate the vehicle fields together. Define how the application handles vehicles absent from the catalogue.
+## Logging (suggested)
 
-## Earlier supported versions
+Log `model_version`, `threshold`, `probability_declined`, `decision`, the ten
+fields (store pincode as its first three digits in general logs) and the model
+latency. Never log raw answers beyond what the privacy rules allow.
 
-| Version | Local artifact | Packaged threshold |
-|---|---|---:|
-| `catboost-vehicle-value-v1` | `models/catboost_vehicle_value_v1/decision_model.joblib` | `0.1969780084859722` |
-| `random-forest-v1` | `models/random_forest_v1/decision_model.joblib` | `0.13052013989740333` |
+## Limits
 
-Read the threshold and version from the loaded bundle. The three-digit pincode conversion belongs to the `catboost-pincode-prefix-v1` pipeline.
+- Labels are historical decisions; the data has no repayment outcomes.
+- Declined-class recall is limited: about 60% of historical declines are missed
+  and about 5 in 6 flags are historical approvals.
+- Validation data was reused during development; hidden-set performance is
+  unknown.
+- Fairness is not established. Validation recall: women 38.2%, men 39.7%;
+  predicted decline rate 12.1% and 12.3%. Recall for resident type R is 17.1%
+  against 40.5% for type O (791 applications).
+- Age: the backend currently accepts 18 to 70; confirm the policy range with
+  the brief before enforcing it.
+
+## Dependencies
+
+`catboost`, `joblib`, `scikit-learn`, `pandas`, `numpy` (no LightGBM). The
+backend `pyproject.toml` currently lacks `catboost` and `joblib`; add them in
+a separate team-reviewed PR.

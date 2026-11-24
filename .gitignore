@@ -30,6 +30,3 @@ frontend/coverage/
 .idea/
 .vscode/
 
-
-# Trained model artifacts are shared privately, never committed (docs/model/model_contract.md).
-models/
