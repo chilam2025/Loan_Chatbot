@@ -123,7 +123,7 @@ fields scored AP 0.1702; the six-question set scored 0.1676 (difference
 -0.0027, 95% interval -0.0054 to -0.0002) with 0.4% more false flags. Dropping
 net salary, employment type, qualification and resident type changed nothing
 measurable. A field set built around income and employment (age, loan amount,
-LTV, net salary, employment type, active loan) scored AP 0.1451, and removing
+LTV, net salary, employment type, Active-loan status) scored AP 0.1451, and removing
 pincode costs the most of any single field.
 
 **Why the pincode hierarchy (v2 over v1).** Adding 2-, 4- and 5-digit prefixes
