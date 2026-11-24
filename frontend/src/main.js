@@ -3,7 +3,11 @@ import hi from "./locales/hi.js";
 import {
   answerQuestion,
   confirmOtp,
+  getApplication,
+  getDecision,
   getNextQuestion,
+  getReadiness,
+  getVerification,
   recordIncomeDocument,
   requestOtp,
   startApplication,
@@ -38,12 +42,26 @@ const state = {
   decision: null,
   busy: false,
 };
+const SESSION_KEY = "loan-chat-application";
 const $ = (selector) => document.querySelector(selector);
 const messages = $("#messages");
 const form = $("#response-form");
 
 function readLanguage() {
   try { return localStorage.getItem("loan-chat-language") || "en"; } catch { return "en"; }
+}
+function readSession() {
+  try {
+    const stored = sessionStorage.getItem(SESSION_KEY);
+    const value = stored ? JSON.parse(stored) : null;
+    return typeof value?.applicationId === "string" ? value : null;
+  } catch { return null; }
+}
+function persistSession() {
+  try {
+    if (state.applicationId) sessionStorage.setItem(SESSION_KEY, JSON.stringify({ applicationId: state.applicationId }));
+    else sessionStorage.removeItem(SESSION_KEY);
+  } catch { /* session storage unavailable */ }
 }
 function t(key) { return dictionaries[state.language][key] ?? dictionaries.en[key] ?? key; }
 function currency(value) {
@@ -103,10 +121,24 @@ function field(labelText, helpText, input, prefix) {
   if (prefix) { const span = document.createElement("span"); span.className = "currency-prefix"; span.textContent = prefix; form.append(span); input.classList.add("currency-input"); }
   form.append(input, help, error);
 }
-function showError(message) { const error = $("#answer-error"); if (error) error.textContent = message; else bot(message); }
+function showError(message) {
+  const error = $("#answer-error");
+  if (error) { error.textContent = message; return; }
+  const alert = document.createElement("p");
+  alert.className = "message bot-message";
+  alert.setAttribute("role", "alert");
+  alert.textContent = message;
+  messages.append(alert);
+  alert.scrollIntoView({ block: "nearest" });
+}
 function errorMessage(error) {
   if (error?.status === 0) return t("backendOffline");
-  if (typeof error?.detail === "string") return error.detail;
+  if (error?.status === 503) return t("serviceUnavailable");
+  if (error?.status === 409) return t("applicationConflict");
+  if (error?.status === 404) return t("applicationNotFound");
+  if (error?.status === 422) return t("validationSummary");
+  if (error?.status >= 500) return t("serviceUnavailable");
+  if (error?.status == null && typeof error?.detail === "string") return error.detail;
   return t("validationSummary");
 }
 
@@ -148,13 +180,19 @@ function renderForm() {
     case "consentDeclined":
       form.append(button(t("startAgain"), restart));
       return;
+    case "resuming":
+      form.append(document.createTextNode(t("resuming")));
+      return;
+    case "resumeError":
+      form.append(button(t("retryResume"), restoreExistingApplication), button(t("startAgain"), restart, "secondary-button"));
+      return;
     case "decided":
       renderDecision();
       return;
     case "question":
       renderQuestionInput(state.question); break;
     case "mobile": {
-      const input = document.createElement("input"); input.type = "tel"; input.inputMode = "numeric"; input.maxLength = 10; input.autocomplete = "off";
+      const input = document.createElement("input"); input.type = "tel"; input.inputMode = "tel"; input.maxLength = 16; input.autocomplete = "tel";
       field(t("mobile"), t("mobileHelp"), input); break;
     }
     case "otp": {
@@ -182,6 +220,11 @@ function renderReview() {
   const heading = document.createElement("h2"); heading.className = "review-heading"; heading.textContent = t("reviewTitle");
   const notice = document.createElement("p"); notice.className = "review-notice"; notice.textContent = t("reviewLocked");
   const list = document.createElement("dl"); list.className = "review-list";
+  if (!state.answers.length) {
+    const savedNotice = document.createElement("p"); savedNotice.className = "review-notice"; savedNotice.textContent = t("savedAnswersNotice");
+    form.append(heading, notice, savedNotice, list, button(state.busy ? t("working") : t("submit"), submit));
+    return;
+  }
   for (const { prompt, display } of state.answers) {
     const term = document.createElement("dt"); term.textContent = prompt;
     const detail = document.createElement("dd"); detail.textContent = display; list.append(term, detail);
@@ -260,11 +303,57 @@ async function withBusy(action) {
 
 function begin() {
   return withBusy(async () => {
+    const readiness = await getReadiness();
+    if (readiness.status !== "ready" || !readiness.model_loaded || !readiness.reference_tables_loaded) {
+      const error = new Error("Readiness check failed"); error.status = 503; throw error;
+    }
     applicant(t("yes"));
     const created = await startApplication(dictionaries[state.language].locale);
     state.applicationId = created.application_id;
+    persistSession();
     showQuestionnaire(await getNextQuestion(state.applicationId));
   });
+}
+
+async function restoreExistingApplication() {
+  if (state.busy) return;
+  state.busy = true;
+  renderForm();
+  try {
+    const saved = readSession();
+    if (!saved) { state.busy = false; restart(); return; }
+    const application = await getApplication(saved.applicationId);
+    state.applicationId = application.application_id;
+    state.language = application.locale === "hi-IN" ? "hi" : "en";
+    messages.replaceChildren();
+    if (application.status === "APPROVED" || application.status === "DECLINED") {
+      state.decision = await getDecision(state.applicationId);
+      state.step = "decided";
+      bot(t("resumedApplication"));
+    } else if (application.status === "MANUAL_REVIEW") {
+      state.decision = { decision: "MANUAL_REVIEW" };
+      state.step = "decided";
+      bot(t("manualReview"));
+    } else if (application.status === "AWAITING_VERIFICATION" || application.status === "READY_FOR_REVIEW") {
+      const verification = await getVerification(state.applicationId);
+      if (!verification.mobile_verified) state.step = "mobile";
+      else if (!verification.pan_verified) state.step = "pan";
+      else if (!verification.document_received) state.step = "document";
+      else state.step = "review";
+      bot(t("resumedApplication"));
+      bot(t(state.step === "mobile" ? "mobile" : state.step === "pan" ? "pan" : state.step === "document" ? "document" : "review"));
+    } else {
+      bot(t("resumedApplication"));
+      showQuestionnaire(await getNextQuestion(state.applicationId));
+    }
+    state.busy = false;
+    refresh();
+  } catch (error) {
+    state.busy = false;
+    state.step = "resumeError";
+    refresh();
+    bot(errorMessage(error));
+  }
 }
 
 function showQuestionnaire(progress) {
@@ -335,6 +424,7 @@ function submit() {
 function restart() {
   messages.replaceChildren();
   Object.assign(state, { step: "welcome", applicationId: null, question: null, progress: { answered: 0, total: 0 }, answers: [], challenge: null, decision: null, draftAnswer: undefined });
+  persistSession();
   bot(t("welcome")); refresh();
 }
 
@@ -362,4 +452,13 @@ $("#language").addEventListener("change", (event) => {
   refresh();
 });
 
-updateChrome(); bot(t("welcome")); renderForm();
+updateChrome();
+const existingSession = readSession();
+if (existingSession) {
+  state.step = "resuming";
+  bot(t("resuming"));
+  renderForm();
+  void restoreExistingApplication();
+} else {
+  bot(t("welcome")); renderForm();
+}

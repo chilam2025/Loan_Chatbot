@@ -1,6 +1,6 @@
 # Frontend
 
-This is a native browser-module prototype with no package install step. Serve
+This is a native browser-module prototype. Serve
 `frontend/` over HTTP; opening `index.html` directly may prevent module loading.
 
 The conversation follows the backend's six-question model contract, then the
@@ -28,3 +28,16 @@ Model files are private, local artifacts under `models/` and are ignored by
 Git. The API loads the configured model once at startup; if it or the reference
 tables are missing, decision requests return `503` while the rest of the API
 can remain available.
+
+Before creating an application, the client checks /ready. On reload, it
+recovers the application stage from the backend and browser session storage.
+Only the opaque application ID is kept in session storage; answers, phone
+numbers, OTPs and documents are not persisted by the browser.
+
+## Browser tests
+
+From frontend/, install the locked test dependencies with npm ci, install
+Chromium with npx playwright install chromium, and run npm test. Playwright
+stubs API responses to cover approved, declined and manual-review outcomes,
+safe explanations, next steps, English and Hindi, readiness and network errors,
+reload recovery, formatted mobile input, keyboard navigation, and axe checks.

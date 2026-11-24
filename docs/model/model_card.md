@@ -88,7 +88,7 @@ decision, not repayment behaviour. Academic prototype; not for real lending.
 **Model.** CatBoost classifier (600 iterations, depth 4, learning rate 0.05,
 L2 10, seed 42, no class weights, no separate calibration). Inputs are ten
 fields obtained from six applicant questions: age, pincode, vehicle,
-loan amount and vehicle price, plus whether an active loan exists. The backend
+loan amount and vehicle price, plus Active-loan status. The backend
 derives LTV, `Final_Tier` and the vehicle fields (see `model_contract_minimal.md`).
 Implied vehicle value and pincode prefixes of 2, 3, 4 and 5 digits are built
 inside the model. Gender, ID, Decision, net salary, qualification, employment
@@ -146,6 +146,14 @@ the second-strongest signal and can act as a proxy for community traits.
 lowering a score using CatBoost SHAP values, without raw values. They describe
 how the model scored the application relative to a typical one. They are not
 causes or advice.
+
+**Active-loan status.** In one paired synthetic example supplied by the model
+owner, decline probability was 0.9536% with an active loan and 1.1358% with no
+active loan. The SHAP contributions were −0.1103 and +0.1032, respectively.
+The observed historical decline rates were 4.20% and 6.18%. These are
+associations in historical decisions, not causal lending conclusions. Testing
+across many applications and folds and an ablation without the feature remain
+pending; the feature-retention decision is not final.
 
 **Timing.** Single-application inference, warm, including input normalization:
 median 47.2 ms, p95 58.4 ms (30 warm runs on the project laptop).
