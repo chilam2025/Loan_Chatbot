@@ -62,13 +62,25 @@ Field	Observation
 Employment	Most large groups are around the overall rate; students have lower observed declines; tiny groups have wide intervals.
 Qualifications	PG/GRAD around 4.5–4.6%; OTHERS around 5.7%; several intervals overlap.
 Residence	Owned is near overall; rented slightly lower; leased and missing groups have substantial uncertainty.
-Active prior loan	Active loan about 4.2% declined versus about 6.2% for NO_PAST_LOANS.
+Active-loan status	Applications with an active loan: 4.20% historical decline rate; no active loan: 6.18%.
 Location tier	Rural/semi-urban around 5.3%; some metropolitan categories around 2.3–3.7%.
 Gender	Female about 5.4%, male about 5.2%, with overlapping intervals.
 Product	Motorcycle about 5.7%, scooter 5.3%, moped 4.5%, electric 2.3%.
 
 
-These are unadjusted historical associations, not causal explanations. The prior-loan flag does not provide repayment history. No inference that taking another loan improves approval chances is justified. Overlapping intervals are not a formal group-difference test. The below-100 flag is a practical small-sample reminder, not a significance threshold. The initially clipped interval axis was corrected to use percentage units.
+These are unadjusted historical associations, not causal explanations. The active-loan status flag does not provide repayment history. No inference that taking another loan improves approval chances is justified. Overlapping intervals are not a formal group-difference test. The below-100 flag is a practical small-sample reminder, not a significance threshold. The initially clipped interval axis was corrected to use percentage units.
+
+### Active-loan status: single-case model explanation
+
+The model owner supplied a paired comparison on one synthetic application. The
+predicted historical decline probability was 0.9536% with an active loan and
+1.1358% with no active loan. The grouped SHAP contribution for active-loan
+status was −0.1103 and +0.1032, respectively. These directions align with the
+unadjusted historical rates above, but this is one application, not a
+population-level effect estimate. It describes correlation in historical
+decisions, not a causal lending conclusion or advice. Evaluation across many
+applications and held-out folds, plus an ablation without active-loan status,
+remain necessary before deciding whether to retain, constrain, or remove it.
 5. Vehicle redundancy and pincode sparsity
 In 75,880 complete training records, every observed Model_Description mapped to exactly one Make_Code, Model_Variant and Product_Code (86 model descriptions). All 12 make categories and 21 variant categories each mapped to one product code.
 
@@ -183,6 +195,8 @@ The inference interface checks required fields, normalises types, rejects malfor
 The deployed candidate has 14 predictor fields, but these need not become 14 separate questions. Recommend one vehicle-catalogue selection to supply model description, make, variant and product. If vehicle price and loan amount are known, the backend can calculate LTV consistently. Location tier may be derived only from a validated mapping, not guessed. Gender and application ID are not questions required by this model.
 
 No empirically final minimum question set, completion-time target X, or decision-latency target Y has yet been established. Existing timings are batch timings and must not be claimed as single-request or end-to-end chatbot latency.
+
+Update: the final question set (six questions), X = 2 minutes and Y = 1 second, with a measured end-to-end latency benchmark, are in [the final report](../final_report.md).
 14. Limitations and remaining work
 1. Declined detection is weak and the benefit over an all-approved cost baseline is modest.
 2. The internal test score was inspected early; later work stopped using it. Full-data EDA also inspected distributions and target relationships. An internal test report cannot be described as completely untouched. No training fit on test rows was reported.

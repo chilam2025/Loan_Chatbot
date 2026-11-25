@@ -18,13 +18,19 @@ frontend owns conversation presentation, accessibility, and user input capture.
 
 ## Component boundary
 
-The predictive and generative responsibilities remain deliberately separate:
+The predictive and generative responsibilities remain deliberately separate.
+Saarthi, the customer assistant, answers free-form customer questions (eligibility,
+documents, EMI, application steps) with a hosted language model (Google Gemini,
+or OpenAI as a backup) and a fixed knowledge base. It falls back to a built-in FAQ
+when no key is configured or the provider fails. It receives only the typed
+question and recent Saarthi chat turns: no applicant answers, identifiers or
+decisions, and it has no decision tools.
 
 ```text
 Applicant
    |
    v
-Conversation layer ---- validation and clarification only
+Application conversation ---- fixed prompts and validation
    |
    v
 Deterministic feature contract
@@ -36,9 +42,14 @@ Fitted preprocessing pipeline --> predictive model --> probability threshold
                                                        |
                                                        v
                                              APPROVE or DECLINE
+
+Customer question ---> Gemini (or OpenAI) ---> Saarthi's answer
+                           (no application data)
 ```
 
-The conversation layer may explain the process and ask follow-up questions. It may not create, override or reinterpret the final credit decision.
+The application conversation layer may explain the process and ask follow-up
+questions. Saarthi may explain the loan and the application process. It may
+not create, override or reinterpret a credit decision.
 
 ## Workstream ownership
 

@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -9,16 +10,42 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from abc_credit import __version__
-from abc_credit.api.routers import applications, decisions, reference, system, verification
+from abc_credit.api.routers import (
+    applications,
+    assistant,
+    decisions,
+    reference,
+    system,
+)
 from abc_credit.db.config import get_database_url
 from abc_credit.db.decision_repository import SQLAlchemyDecisionRepository
-from abc_credit.db.verification_repository import SQLAlchemyVerificationRepository
 from abc_credit.integrations.model import try_load_configured_model
 from abc_credit.services.application_service import ApplicationService
+from abc_credit.services.customer_assistant import CustomerAssistant
 from abc_credit.services.decision_service import DecisionService
-from abc_credit.services.verification_service import VerificationService
 
 CORS_ORIGINS_ENV = "ABC_CORS_ORIGINS"
+# Only Saarthi's settings are read from the repository's .env file. Its other
+# values (database URL, /app model paths) are written for Docker Compose and
+# would break a local uvicorn run.
+DOTENV_PATH = Path(__file__).resolve().parents[4] / ".env"
+DOTENV_KEYS = ("GEMINI_API_KEY", "GEMINI_MODEL", "OPENAI_API_KEY", "OPENAI_MODEL")
+
+
+def load_assistant_settings(path: Path = DOTENV_PATH) -> None:
+    """Copy Saarthi's Gemini and OpenAI settings from .env without overriding the environment."""
+
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name, separator, value = line.partition("=")
+        name = name.strip().removeprefix("export ").strip()
+        if separator and name in DOTENV_KEYS and name not in os.environ:
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            if value:
+                os.environ[name] = value
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 
 
@@ -42,7 +69,6 @@ def get_cors_origins() -> list[str]:
 
 def create_app(
     application_service: ApplicationService | None = None,
-    verification_service: VerificationService | None = None,
     decision_service: DecisionService | None = None,
 ) -> FastAPI:
     """Create an isolated API instance with explicitly configured services."""
@@ -59,9 +85,6 @@ def create_app(
     )
     app.state.application_service = configured_application_service
     session_factory = configured_application_service.repository.session_factory
-    app.state.verification_service = verification_service or VerificationService(
-        SQLAlchemyVerificationRepository(session_factory)
-    )
     # The model and reference tables are loaded once per API instance, never per request.
     # A missing artifact leaves the API up; decisions then return 503 (see /ready).
     app.state.decision_service = decision_service or DecisionService(
@@ -69,6 +92,8 @@ def create_app(
         try_load_configured_model(),
         configured_application_service.reference_data,
     )
+    # Saarthi (customer Q&A) is never used by the lending decision path.
+    app.state.customer_assistant = CustomerAssistant()
 
     app.add_middleware(
         CORSMiddleware,
@@ -92,10 +117,11 @@ def create_app(
 
     app.include_router(system.router)
     app.include_router(applications.router, prefix="/api/v1")
-    app.include_router(verification.router, prefix="/api/v1")
     app.include_router(decisions.router, prefix="/api/v1")
     app.include_router(reference.router, prefix="/api/v1")
+    app.include_router(assistant.router, prefix="/api/v1")
     return app
 
 
+load_assistant_settings()
 app = create_app()

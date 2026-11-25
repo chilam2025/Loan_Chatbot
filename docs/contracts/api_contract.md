@@ -2,14 +2,14 @@
 
 ## Purpose
 
-The backend owns application state, input validation, verification status,
-reference data, model inference, and audit events. The frontend owns
+The backend owns application state, input validation, reference data, model inference, and audit events. The frontend owns
 presentation and must not reproduce decision logic.
 
 Application metadata, validated answers, and audit events are stored in
 separate relational tables. SQLite supports local development; PostgreSQL is
-configured through `ABC_DATABASE_URL`. Verification providers in this academic
-prototype are simulations.
+configured through `ABC_DATABASE_URL`. The API never collects names, phone
+numbers, PAN, Aadhaar or documents; the six questionnaire answers are the only
+applicant data.
 
 ## Conventions
 
@@ -19,20 +19,22 @@ prototype are simulations.
 - Application identifiers are server-generated UUIDs; timestamps are UTC.
 - Applicant PII must not appear in general API logs.
 - The trained model is the only component that produces `APPROVED` or
-  `DECLINED`; `MANUAL_REVIEW` is backend verification policy.
+  `DECLINED`.
 
 ## Application states
 
 ```text
 STARTED
 COLLECTING_INFORMATION
-AWAITING_VERIFICATION
 READY_FOR_REVIEW
 SUBMITTED
 APPROVED
 DECLINED
-MANUAL_REVIEW
 ```
+
+`AWAITING_VERIFICATION` and `MANUAL_REVIEW` remain in the database schema for
+applications created by the earlier identity-check flow; new applications never
+enter them.
 
 Clients cannot set application status directly.
 
@@ -65,8 +67,8 @@ Returns non-sensitive application metadata. Unknown IDs return `404`.
 
 Returns the next localized question, `answered_questions`,
 `total_questions`, application status, and next action. When the six answers
-are complete, `question` is `null` and the application proceeds to
-`AWAITING_VERIFICATION`.
+are complete, `question` is `null` and the application moves straight to
+`READY_FOR_REVIEW` (next action `review_and_submit`).
 
 ### `PATCH /api/v1/applications/{application_id}/answers`
 
@@ -91,8 +93,8 @@ The backend derives LTV as `loan_amount / vehicle_price * 100`, rounded to two
 decimals, and looks up `Final_Tier`, `Make_Code`, `Model_Variant`, and
 `Product_Code`. It never asks the applicant for these fields. Gender,
 qualification, employment type, residence type, and net salary are not
-collected. Invalid answers return `422`; answers cannot be changed after
-verification begins.
+collected. Invalid answers return `422`; answers cannot be changed once all six
+have been saved.
 
 ### `GET /api/v1/reference/vehicles`
 
@@ -105,37 +107,6 @@ submit for the `vehicle` answer.
 
 If reference data did not load, the endpoint returns `503`.
 
-## Verification endpoints
-
-### `GET /api/v1/applications/{application_id}/verification`
-
-Returns non-sensitive verification progress. It does not return mobile number,
-PAN, document name, OTP digest, or attempt history.
-
-### `POST /api/v1/applications/{application_id}/verification/otp/request`
-
-Creates a five-minute mock OTP challenge with three attempts. The response
-exposes `mock_code` for the academic demonstration only. Replacement requests
-invalidate the earlier code. The database stores the mobile number's final
-four digits and a salted OTP digest.
-
-### `POST /api/v1/applications/{application_id}/verification/otp/confirm`
-
-Confirms the mock OTP. Three failed attempts move the application to
-`MANUAL_REVIEW`. Expired, consumed, or replaced challenges return `409`.
-
-### `POST /api/v1/applications/{application_id}/verification/pan`
-
-Validates PAN format and records a mock success. It does not contact the Income
-Tax Department and does not store the PAN value.
-
-### `POST /api/v1/applications/{application_id}/verification/documents`
-
-Records metadata for a salary slip, bank statement, or income proof. PDF, JPEG,
-and PNG metadata up to 10 MB is accepted. Binary file contents are not accepted
-or uploaded. When all verification steps pass, status becomes
-`READY_FOR_REVIEW`.
-
 ## Submission and decision
 
 ### `POST /api/v1/applications/{application_id}/submit`
@@ -144,8 +115,7 @@ Submits a `READY_FOR_REVIEW` application once. The backend builds the ten model
 fields from stored answers and reference tables, runs inference, and uses the
 model's packaged threshold: `DECLINED` when
 `probability_declined >= threshold`; otherwise `APPROVED`. Clients cannot
-supply a decision, probability, or threshold. The model does not produce
-`MANUAL_REVIEW`.
+supply a decision, probability, or threshold.
 
 The model and reference tables are loaded once during application startup. The
 default model provider is `trained`; set `ABC_MODEL_PROVIDER=mock` only for
@@ -207,5 +177,4 @@ applications without a decision return `409`.
 - `503`: model or reference data is unavailable.
 - `500`: unexpected error without sensitive implementation details.
 
-Errors must never echo PAN, document contents, OTP values, or other sensitive
-applicant data.
+Errors must never echo answer values or other applicant data.

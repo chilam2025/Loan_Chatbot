@@ -107,24 +107,9 @@ def create_with_answers(api: TestClient, **answer_overrides: int | str) -> str:
 
 
 def ready_for_review(api: TestClient, **answer_overrides: int | str) -> str:
+    # Answering all six questions is enough; no phone, PAN or documents are collected.
     application_id = create_with_answers(api, **answer_overrides)
-    base = f"/api/v1/applications/{application_id}/verification"
-    challenge = api.post(f"{base}/otp/request", json={"mobile_number": "9876543210"}).json()
-    api.post(
-        f"{base}/otp/confirm",
-        json={"challenge_id": challenge["challenge_id"], "code": challenge["mock_code"]},
-    )
-    api.post(f"{base}/pan", json={"pan": "ABCDE1234F"})
-    document = api.post(
-        f"{base}/documents",
-        json={
-            "document_type": "SALARY_SLIP",
-            "file_name": "salary-slip.pdf",
-            "content_type": "application/pdf",
-            "size_bytes": 125_000,
-        },
-    )
-    assert document.json()["status"] == "VERIFIED"
+    assert api.get(f"/api/v1/applications/{application_id}").json()["status"] == "READY_FOR_REVIEW"
     return application_id
 
 
@@ -193,20 +178,28 @@ def test_duplicate_submission_is_rejected_and_decision_is_recorded_once() -> Non
 
 def test_submit_and_decision_enforce_state_and_existence() -> None:
     api, _ = client_with_model()
-    unverified = create_with_answers(api)
+    created = api.post(
+        "/api/v1/applications",
+        json={"locale": "en-IN", "consent_to_data_processing": True},
+    )
+    incomplete = created.json()["application_id"]
+    api.patch(
+        f"/api/v1/applications/{incomplete}/answers",
+        json={"answers": answers()[:3]},
+    )
 
-    too_early = api.post(f"/api/v1/applications/{unverified}/submit")
-    no_decision = api.get(f"/api/v1/applications/{unverified}/decision")
+    too_early = api.post(f"/api/v1/applications/{incomplete}/submit")
+    no_decision = api.get(f"/api/v1/applications/{incomplete}/decision")
     unknown_submit = api.post(f"/api/v1/applications/{uuid4()}/submit")
     unknown_decision = api.get(f"/api/v1/applications/{uuid4()}/decision")
 
     assert too_early.status_code == 409
-    assert "AWAITING_VERIFICATION" in too_early.json()["detail"]
+    assert "COLLECTING_INFORMATION" in too_early.json()["detail"]
     assert no_decision.status_code == 409
     assert unknown_submit.status_code == 404
     assert unknown_decision.status_code == 404
-    status = api.get(f"/api/v1/applications/{unverified}").json()["status"]
-    assert status == "AWAITING_VERIFICATION"
+    status = api.get(f"/api/v1/applications/{incomplete}").json()["status"]
+    assert status == "COLLECTING_INFORMATION"
 
 
 def test_model_failure_is_safe_and_submission_can_be_retried() -> None:
