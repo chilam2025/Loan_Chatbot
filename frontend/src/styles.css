@@ -69,8 +69,7 @@ button { font: inherit; }
 .application { max-width: 760px; margin: 44px auto 0; }
 .intro { color: #fff; }
 .eyebrow { margin: 0 0 14px; color: var(--gold); font-size: 12px; font-weight: 700; letter-spacing: .18em; }
-.intro h1 { margin: 0 0 12px; font-size: clamp(30px, 5vw, 44px); line-height: 1.1; letter-spacing: -.03em; font-weight: 750; }
-.intro-copy { margin: 0; max-width: 560px; color: #c9d6e6; font-size: 16px; line-height: 1.6; }
+.intro h1 { margin: 0; font-size: clamp(30px, 5vw, 44px); line-height: 1.1; letter-spacing: -.03em; font-weight: 750; }
 .highlights { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 0; padding: 0; list-style: none; }
 .highlights li { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 999px; background: rgba(255, 255, 255, .07); color: #fff; font-size: 13px; font-weight: 600; backdrop-filter: blur(6px); }
 .highlight-icon, .secure-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
@@ -238,7 +237,6 @@ button:focus-visible, .language-picker select:focus-visible, a:focus-visible, .m
   .app-shell { padding: 0 16px 110px; }
   .topbar { height: 68px; }
   .application { margin-top: 30px; }
-  .intro-copy { font-size: 15px; }
   .chat-card { margin-top: 26px; border-radius: 18px; }
   .chat-header { flex-wrap: wrap; padding: 16px; }
   .progress-wrap { width: 100%; }

@@ -2,7 +2,6 @@ export default {
   locale: "en-IN", currency: "INR",
   // Page chrome
   brandSubtitle: "TWO-WHEELER LOANS", eyebrow: "TWO-WHEELER LOANS", title: "Your next ride, financed in minutes",
-  intro: "Just six quick questions about you, your vehicle and the loan — no documents, phone number or PAN needed.",
   highlightDocs: "No documents needed", highlightTime: "About 2 minutes", highlightInstant: "Instant decision",
   chatStatus: "Your loan guide · Online", progress: "Application progress", start: "Getting started",
   stages: ["Your details", "Review", "Decision"], stagesLabel: "Application stages",

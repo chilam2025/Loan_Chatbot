@@ -2,7 +2,6 @@ export default {
   locale: "hi-IN", currency: "INR",
   // Page chrome
   brandSubtitle: "दोपहिया वाहन ऋण", eyebrow: "दोपहिया वाहन ऋण", title: "आपकी अगली सवारी, मिनटों में फ़ाइनेंस",
-  intro: "आपके, आपके वाहन और ऋण के बारे में बस छह छोटे सवाल — कोई दस्तावेज़, फ़ोन नंबर या PAN नहीं चाहिए।",
   highlightDocs: "कोई दस्तावेज़ नहीं चाहिए", highlightTime: "लगभग 2 मिनट", highlightInstant: "तुरंत निर्णय",
   chatStatus: "आपका ऋण सहायक · ऑनलाइन", progress: "आवेदन की प्रगति", start: "शुरुआत",
   stages: ["आपकी जानकारी", "समीक्षा", "निर्णय"], stagesLabel: "आवेदन के चरण",

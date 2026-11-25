@@ -90,37 +90,88 @@ explanations are stored but not shown to applicants.
 
 ## 4. Evaluation and threshold
 
-**Validation set:** 16,260 applications, of which 854 are historical declines.
+**Data split.** The 108,403 cleaned records are split 70/15/15, stratified with
+a fixed seed:
 
-| Metric | Value |
-|---|---|
-| Accuracy (always-approve baseline: 94.75%) | 86.64% |
-| DECLINED precision / recall / F1 | 16.88% / **39.34%** / 0.236 |
-| APPROVED precision / recall / F1 | 96.37% / 89.26% / 0.927 |
-| Balanced accuracy / macro F1 | 64.3% / 0.582 |
-| AP / ROC AUC / Brier score | 0.1827 / 0.7766 / 0.0464 |
+| Partition | Applications | Historical declines | Used for |
+|---|---:|---:|---|
+| Training | 75,882 | 3,986 | Fitting the model; choosing the cutoff on held-out folds |
+| Validation | 16,260 | 854 | Comparing candidate models during development |
+| Internal test | 16,261 | 855 | Scored once with the final model and locked cutoff |
+
+The internal test partition played no part in fitting, tuning or choosing the
+cutoff of the final model. It is the best available stand-in for the hidden
+test set. To reproduce:
+
+```powershell
+uv run --project backend python -m abc_credit.modeling.evaluate_internal_test
+```
+
+**Results at the chosen cutoff (0.11018).** The brief's primary metrics are
+accuracy, precision and recall. Because 94.7% of applications are approvals,
+they are reported for each class, with balanced accuracy and ranking metrics
+alongside.
+
+| Metric | Validation | Internal test |
+|---|---:|---:|
+| Accuracy | 86.64% | **86.97%** |
+| Always-approve baseline accuracy | 94.75% | 94.74% |
+| DECLINED precision / recall / F1 | 16.88% / 39.34% / 0.236 | **17.95% / 41.40% / 0.250** |
+| APPROVED precision / recall / F1 | 96.37% / 89.26% / 0.927 | 96.49% / 89.50% / 0.929 |
+| Balanced accuracy / macro F1 | 64.3% / 0.582 | 65.5% / 0.590 |
+| Average precision / ROC AUC | 0.1827 / 0.7766 | 0.1742 / 0.7905 |
+| Applications flagged as DECLINED | 12.2% | 12.1% |
+
+Internal test confusion matrix:
 
 | Historical decision | Predicted APPROVED | Predicted DECLINED |
-|---|---:|---|
-| APPROVED | 13,751 | 1,655 |
-| DECLINED | 518 | 336 |
+|---|---:|---:|
+| APPROVED (15,406) | 13,788 | 1,618 |
+| DECLINED (855) | 501 | **354** |
 
-**Threshold.** The model declines when the probability of decline is at least
-**0.11018**. This cutoff catches 40% of historical declines in held-out training
-folds. It was not tuned on validation.
+The test results match validation closely. Decline recall is 41.4% against a
+40% target, so the model is not overfitted to the data used during development.
 
-Accuracy falls below the always-approve baseline because the threshold
-deliberately flags about 12% of applications. That trade is intended: the brief
-asks for attention to DECLINED recall. A missed risky applicant risks default,
-while a wrongly declined applicant is lost business.
+**Why accuracy is below the always-approve baseline.** A model that approves
+everyone scores 94.7% accuracy but catches no risky applicants at all. The
+brief asks for attention to DECLINED recall, and catching 41% of declines means
+flagging about 12% of applications, which lowers accuracy. Accuracy alone is
+therefore not a useful measure here.
 
-Other operating points:
+### Threshold
 
-| Target recall | Threshold |
-|---|---|
-| 30% | 0.1361 |
-| 50% | 0.0900 |
-| 60% | 0.0735 |
+**Decision rule.** The model declines an application when its probability of
+decline is at least **0.11018**. It approves every other application.
+
+**How it was chosen.** The cutoff is the highest one that catches 40% of
+historical declines in held-out training folds. It was fixed before validation
+or test data were scored. The table shows the same cutoff alongside the
+alternatives, all scored on the internal test set:
+
+| Cutoff | Recall target | Applications flagged | Risky applicants caught (of 855) | Good customers declined (of 15,406) | DECLINED precision | Accuracy |
+|---|---:|---:|---:|---:|---:|---:|
+| 0.1361 | 30% | 8.1% | 273 (31.9%) | 1,043 | 20.7% | 90.0% |
+| **0.1102** | **40%** | **12.1%** | **354 (41.4%)** | **1,618** | **18.0%** | **87.0%** |
+| 0.0900 | 50% | 17.1% | 438 (51.2%) | 2,343 | 15.7% | 83.0% |
+| 0.0735 | 60% | 22.8% | 512 (59.9%) | 3,189 | 13.8% | 78.3% |
+
+**The business trade-off.**
+- Going from 0.136 to 0.110 catches 81 more risky applicants but turns away 575
+  more good customers. That is about **7 good customers lost for each extra
+  risky applicant caught**.
+- Going further, to 0.090, costs about 9 good customers for each extra risky
+  applicant (725 more turned away for 84 more caught).
+
+So 0.110 is the right cutoff if one missed risky applicant costs ABC Credit
+roughly 7–9 times what it loses by turning away a good customer.
+
+A default can wipe out most of the loan principal, while a lost customer costs
+only the margin on that loan, so a ratio in this range is plausible.
+- If ABC Credit's own loss figures put the ratio below 7, use 0.136.
+- If they put it above 9, use 0.090.
+
+Each recall target held up on the test set, so ABC Credit can move between
+these points without retraining.
 
 **Hidden test set.** Predictions are produced with:
 
@@ -129,8 +180,9 @@ uv run --project backend python -m abc_credit.modeling.predict_batch --input <te
 ```
 
 Output goes to `reports/generated/predictions.csv` (`ID`, `Decision`,
-`probability_declined`). The test file has not been provided yet, so these
-results are pending.
+`probability_declined`). If the file includes a `Decision` column, the same
+metrics are printed. The test file has not been provided yet, so these results
+are pending.
 
 ## 5. Latency: Y = 1 second
 
@@ -217,7 +269,8 @@ chat turns. It is instructed never to ask for personal details.
 
 Gender is not a model input. On validation, the predicted decline rate is 12.1%
 for women and 12.3% for men. DECLINED recall is 38.2% for women and 39.7% for
-men.
+men. On the internal test set, these figures are 12.7% and 11.9% for the
+predicted decline rate, and 43.1% and 40.8% for recall.
 
 Fairness is **not established**:
 - **Pincode** is the second-strongest signal and can act as a proxy for
@@ -234,7 +287,9 @@ the recommended next step. It needs the training data.
 - **Most declines are still missed.** About 60% of historical declines are
   missed, and about 5 of every 6 flagged applications were historically
   approved.
-- **Only the hidden test set gives an independent check.** The validation data
-  was reused during development, so validation figures are optimistic.
+- **The internal test set is close to independent, but not fully.** The final
+  model was scored on it only once. An earlier candidate's score on it was
+  looked at early in development. Only the hidden test set is a fully
+  independent check.
 - **X and Y are not field-tested.** X is an estimate, and Y was measured on a
   development laptop, not production hardware.

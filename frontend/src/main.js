@@ -98,7 +98,7 @@ function renderStepper() {
 function updateChrome() {
   document.documentElement.lang = state.language === "hi" ? "hi" : "en";
   const text = {
-    "eyebrow": "eyebrow", "page-title": "title", "intro-copy": "intro", "brand-subtitle": "brandSubtitle",
+    "eyebrow": "eyebrow", "page-title": "title", "brand-subtitle": "brandSubtitle",
     "highlight-time": "highlightTime", "highlight-docs": "highlightDocs", "highlight-instant": "highlightInstant",
     "chat-name": "assistantLabel", "chat-status": "chatStatus", "privacy-note": "privacy", "footer-ask": "footerAsk",
     "launcher-label": "launcher", "assistant-title": "assistantLabel", "assistant-tagline": "assistantTagline",
