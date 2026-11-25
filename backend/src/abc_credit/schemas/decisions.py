@@ -14,7 +14,8 @@ from abc_credit.schemas.applications import ApplicationStatus
 class DecisionOutcome(StrEnum):
     """Outcomes produced by the model's score against its locked threshold.
 
-    MANUAL_REVIEW is a backend policy (verification), never a model output.
+    The applicant is never asked for identity details; the outcome comes only from
+    the model score.
     """
 
     APPROVED = "APPROVED"

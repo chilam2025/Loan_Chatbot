@@ -43,15 +43,15 @@ function decisionPayload(decision) {
 }
 
 async function mockApi(page, {
-  decision = "APPROVED", unavailable = false, offline = false, manual = false, validationError = false,
+  decision = "APPROVED", unavailable = false, offline = false, validationError = false,
   resumeFailOnce = false,
 } = {}) {
   let answered = 0;
   let applicationStatus = "STARTED";
   let shouldFailResume = resumeFailOnce;
-  let verification = { mobile_verified: false, pan_verified: false, document_received: false };
   let decisionCalls = 0;
-  let submittedMobile;
+  const assistantRequests = [];
+  const requestedPaths = [];
 
   await page.route("**/ready", async (route) => {
     if (offline) return route.abort();
@@ -62,6 +62,7 @@ async function mockApi(page, {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
+    requestedPaths.push(path);
     if (request.method() === "POST" && path === "/api/v1/applications") {
       return route.fulfill({ status: 201, json: { application_id: "e2e-app", status: "STARTED", locale: request.postDataJSON().locale } });
     }
@@ -76,36 +77,13 @@ async function mockApi(page, {
         return route.fulfill({ status: 422, json: { detail: "Age does not meet backend rules" } });
       }
       answered += request.postDataJSON().answers.length;
-      applicationStatus = answered === questions.length ? "AWAITING_VERIFICATION" : "COLLECTING_INFORMATION";
+      applicationStatus = answered === questions.length ? "READY_FOR_REVIEW" : "COLLECTING_INFORMATION";
       return route.fulfill({ json: {
         application_id: "e2e-app", status: applicationStatus, answered_questions: answered,
         total_questions: questions.length,
-        next_action: answered === questions.length ? "verify_identity" : "answer_questions",
+        next_action: answered === questions.length ? "review_and_submit" : "answer_questions",
         question: questions[answered] ?? null,
       } });
-    }
-    if (path.endsWith("/verification/otp/request") && request.method() === "POST") {
-      submittedMobile = request.postDataJSON().mobile_number;
-      return route.fulfill({ json: { application_id: "e2e-app", challenge_id: "e2e-challenge", mock_code: "123456" } });
-    }
-    if (path.endsWith("/verification/otp/confirm") && request.method() === "POST") {
-      if (manual) {
-        applicationStatus = "MANUAL_REVIEW";
-        return route.fulfill({ json: { status: "MANUAL_REVIEW", mobile_verified: false, pan_verified: false, document_received: false } });
-      }
-      verification.mobile_verified = true;
-      return route.fulfill({ json: { status: "VERIFIED", ...verification } });
-    }
-    if (path.endsWith("/verification/pan") && request.method() === "POST") {
-      verification.pan_verified = true;
-      return route.fulfill({ json: { status: "VERIFIED", ...verification } });
-    }
-    if (path.endsWith("/verification/documents") && request.method() === "POST") {
-      verification.document_received = true;
-      return route.fulfill({ json: { status: "VERIFIED", ...verification } });
-    }
-    if (path.endsWith("/verification") && request.method() === "GET") {
-      return route.fulfill({ json: { application_id: "e2e-app", status: "PENDING", ...verification } });
     }
     if (path === "/api/v1/applications/e2e-app" && request.method() === "GET") {
       if (shouldFailResume) {
@@ -120,9 +98,14 @@ async function mockApi(page, {
       return route.fulfill({ json: decisionPayload(decision) });
     }
     if (path.endsWith("/decision") && request.method() === "GET") return route.fulfill({ json: decisionPayload(decision) });
+    if (path === "/api/v1/assistant/ask" && request.method() === "POST") {
+      const body = request.postDataJSON();
+      assistantRequests.push(body);
+      return route.fulfill({ json: { answer: `Saarthi answer ${assistantRequests.length}`, source: "generative" } });
+    }
     return route.fulfill({ status: 404, json: { detail: "Unmocked request: " + request.method() + " " + path } });
   });
-  return { submittedMobile: () => submittedMobile, decisionCalls: () => decisionCalls };
+  return { decisionCalls: () => decisionCalls, assistantRequests, requestedPaths };
 }
 
 async function beginApplication(page, locale = "en") {
@@ -145,89 +128,47 @@ async function answerQuestions(page) {
   }
 }
 
-async function completeVerification(page, locale = "en") {
-  const labels = locale === "hi"
-    ? {
-      mobile: "आपका 10 अंकों का मोबाइल नंबर क्या है?",
-      otp: "हमारे भेजे गए 6 अंकों का कोड दर्ज करें।",
-      pan: "आपका PAN क्या है?",
-      document: "कृपया आय का प्रमाण, जैसे वेतन पर्ची, अपलोड करें।",
-      review: "आपके आवेदन की जानकारी",
-    }
-    : {
-      mobile: "What is your 10-digit mobile number?",
-      otp: "Enter the 6-digit code we sent.",
-      pan: "What is your PAN?",
-      document: "Please upload proof of income, such as a salary slip.",
-      review: "Your application details",
-    };
-  const continueButton = page.getByRole("button", { name: /continue|आगे बढ़ें/i });
-
-  await expect(page.getByLabel(labels.mobile)).toBeVisible();
-  await page.getByLabel(labels.mobile).fill("+91 98765-43210");
-  await continueButton.click();
-  await expect(page.getByLabel(labels.otp)).toBeVisible();
-  await page.getByLabel(labels.otp).fill("123456");
-  await continueButton.click();
-  await expect(page.getByLabel(labels.pan)).toBeVisible();
-  await page.getByLabel(labels.pan).fill("ABCDE1234F");
-  await continueButton.click();
-  await expect(page.getByLabel(labels.document)).toBeVisible();
-  await page.getByLabel(labels.document).setInputFiles({
-    name: "salary-slip.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test metadata only"),
-  });
-  await continueButton.click();
-  await expect(page.getByRole("heading", { name: labels.review })).toBeVisible();
+async function reachReview(page, locale = "en") {
+  await expect(page.getByRole("heading", { name: locale === "hi" ? "आपके आवेदन की जानकारी" : "Your application details" })).toBeVisible();
 }
 
-test("approved flow masks mobile and shows safe explanation and next steps", async ({ page }) => {
+test("approved flow asks only six questions and shows only the result and next steps", async ({ page }) => {
   const api = await mockApi(page);
   await beginApplication(page);
   await answerQuestions(page);
-  await completeVerification(page);
+  await reachReview(page);
   await page.getByRole("button", { name: "Submit application" }).click();
   const result = page.locator("#response-form");
   await expect(result.getByText(/approved in principle/i)).toBeVisible();
-  await expect(result.getByText("Active-loan status")).toBeVisible();
   await expect(result.getByText(/review the sanction documents/i)).toBeVisible();
-  await expect(result).not.toContainText("0.951");
-  await expect(result).not.toContainText("0.11");
-  await expect(result).not.toContainText("private-model-version");
-  await expect(result).not.toContainText("Location");
+  for (const hidden of ["0.951", "0.11", "private-model-version", "Location", "Active-loan status", "Model explanation", "Factors"]) {
+    await expect(page.locator("body")).not.toContainText(hidden);
+  }
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations).toEqual([]);
-  await expect(page.locator("#messages")).not.toContainText("9876543210");
-  expect(api.submittedMobile()).toBe("9876543210");
+  await expect(page.locator("body")).not.toContainText(/What is your (10-digit mobile number|PAN)|upload proof of income|6-digit code/i);
+  await expect(page.locator("input[type=file], input[type=tel]")).toHaveCount(0);
+  expect(api.requestedPaths.some((path) => path.includes("verification"))).toBe(false);
   await page.screenshot({ path: "test-results/decision-approved-en.png", fullPage: true });
 });
 
 test("declined flow shows the review next step", async ({ page }) => {
   await mockApi(page, { decision: "DECLINED" });
-  await beginApplication(page); await answerQuestions(page); await completeVerification(page);
+  await beginApplication(page); await answerQuestions(page); await reachReview(page);
   await page.getByRole("button", { name: "Submit application" }).click();
   const result = page.locator("#response-form");
   await expect(result.getByText(/can’t approve/i)).toBeVisible();
   await expect(result.getByText(/review this result with the lender/i)).toBeVisible();
 });
 
-test("OTP policy routes to manual review without calling model decision", async ({ page }) => {
-  const api = await mockApi(page, { manual: true });
-  await beginApplication(page); await answerQuestions(page);
-  await page.locator("#answer").fill("+91 98765-43210");
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.locator("#answer").fill("123456");
-  await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.locator("#response-form").getByText(/additional review/i)).toBeVisible();
-  expect(api.decisionCalls()).toBe(0);
-});
-
-test("Hindi flow localizes active-loan explanation and next step", async ({ page }) => {
+test("Hindi flow localizes the result and next step without explanations", async ({ page }) => {
   await mockApi(page, { decision: "DECLINED" });
-  await beginApplication(page, "hi"); await answerQuestions(page); await completeVerification(page, "hi");
+  await beginApplication(page, "hi"); await answerQuestions(page); await reachReview(page, "hi");
   await page.getByRole("button", { name: "आवेदन जमा करें" }).click();
   const result = page.locator("#response-form");
-  await expect(result.getByText("सक्रिय ऋण की स्थिति")).toBeVisible();
+  await expect(result.getByText(/स्वीकृत नहीं कर सकते/)).toBeVisible();
   await expect(result.getByText(/ऋणदाता से बात कर सकते हैं/)).toBeVisible();
+  await expect(result).not.toContainText("सक्रिय ऋण की स्थिति");
   await page.screenshot({ path: "test-results/decision-declined-hi.png", fullPage: true });
 });
 
@@ -278,6 +219,16 @@ test("application resumes at its unanswered question after reload", async ({ pag
   await expect(page.locator("#answer")).toHaveAttribute("inputmode", "numeric");
 });
 
+test("completed application resumes at review after reload", async ({ page }) => {
+  await mockApi(page);
+  await beginApplication(page);
+  await answerQuestions(page);
+  await reachReview(page);
+  await page.reload();
+  await reachReview(page);
+  await expect(page.getByRole("button", { name: "Submit application" })).toBeVisible();
+});
+
 test("failed session recovery can be retried successfully", async ({ page }) => {
   await mockApi(page, { resumeFailOnce: true });
   await page.addInitScript(() => sessionStorage.setItem("loan-chat-application", JSON.stringify({ applicationId: "e2e-app" })));
@@ -285,17 +236,6 @@ test("failed session recovery can be retried successfully", async ({ page }) => 
   await expect(page.getByText("The decision service is temporarily unavailable. Please try again later.")).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByLabel("How old are you?")).toBeVisible();
-});
-
-test("formatted +91 mobile fits the input and is normalized before submission", async ({ page }) => {
-  const api = await mockApi(page);
-  await beginApplication(page); await answerQuestions(page);
-  await expect(page.getByLabel("What is your 10-digit mobile number?")).toBeVisible();
-  const phone = page.locator("#answer");
-  await expect(phone).toHaveAttribute("maxlength", "16");
-  await phone.fill("+91 98765-43210");
-  await page.getByRole("button", { name: "Continue" }).click();
-  expect(api.submittedMobile()).toBe("9876543210");
 });
 
 test("home is keyboard reachable and meets automated accessibility rules", async ({ page }) => {
@@ -306,6 +246,44 @@ test("home is keyboard reachable and meets automated accessibility rules", async
   await expect(page.getByRole("combobox", { name: "Language" })).toBeFocused();
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations).toEqual([]);
+});
+
+test("Saarthi answers free-form questions with history but no application data", async ({ page }) => {
+  const api = await mockApi(page);
+  await beginApplication(page);
+  await page.getByRole("button", { name: "Ask Saarthi", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "Saarthi" });
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button", { name: "Do I need any documents?" }).click();
+  await expect(panel.getByText("Saarthi answer 1")).toBeVisible();
+  await panel.getByLabel("Your question").fill("And how is EMI calculated?");
+  await panel.getByRole("button", { name: "Send" }).click();
+  await expect(panel.getByText("Saarthi answer 2")).toBeVisible();
+
+  expect(api.assistantRequests[0]).toEqual({ question: "Do I need any documents?", locale: "en-IN", history: [] });
+  expect(api.assistantRequests[1].history).toEqual([
+    { role: "user", content: "Do I need any documents?" },
+    { role: "assistant", content: "Saarthi answer 1" },
+  ]);
+  expect(JSON.stringify(api.assistantRequests)).not.toContain("e2e-app");
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(page.getByRole("button", { name: "Ask Saarthi", exact: true })).toBeFocused();
+});
+
+test("Saarthi speaks Hindi when Hindi is selected", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/");
+  await page.getByRole("combobox", { name: "Language" }).selectOption("hi");
+  await page.getByRole("button", { name: "सारथी से पूछें", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "सारथी" });
+  await expect(panel.getByText(/नमस्ते, मैं सारथी हूँ/)).toBeVisible();
+  await panel.getByRole("button", { name: "कौन आवेदन कर सकता है?" }).click();
+  await expect(panel.getByText("Saarthi answer 1")).toBeVisible();
+  expect(api.assistantRequests[0].locale).toBe("hi-IN");
 });
 
 test("mobile viewport has no horizontal overflow and application form passes axe", async ({ page }) => {

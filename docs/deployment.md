@@ -5,8 +5,9 @@ and serves the browser client through Nginx. Nginx proxies `/api/` to the API.
 
 1. Install Docker Compose and copy `.env.example` to `.env`. Change the local
    PostgreSQL password in both `POSTGRES_PASSWORD` and the password portion of
-   `ABC_DATABASE_URL`. Set `OPENAI_API_KEY` in `.env` to enable the separate
-   project Q&A feature; the key is used by the backend only. `OPENAI_MODEL`
+   `ABC_DATABASE_URL`. Set `OPENAI_API_KEY` in `.env` to enable generative
+   answers from Saarthi, the customer assistant (without it Saarthi uses its
+   built-in FAQ); the key is used by the backend only. `OPENAI_MODEL`
    defaults to `gpt-6-luna` and can be changed to a model enabled for your API
    project. Do not commit `.env` or put the key in frontend code.
 2. Place the private handoff files at

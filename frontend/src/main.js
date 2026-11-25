@@ -2,36 +2,29 @@ import en from "./locales/en.js";
 import hi from "./locales/hi.js";
 import {
   answerQuestion,
-  askProjectAssistant,
-  confirmOtp,
+  askAssistant,
   getApplication,
   getDecision,
   getNextQuestion,
-  getProjectAssistantStatus,
   getReadiness,
-  getVerification,
-  recordIncomeDocument,
-  requestOtp,
   startApplication,
   submitApplication,
-  verifyPan,
 } from "./services/applicationApi.js";
 
-// Steps: welcome → consent → question (repeated, driven by the backend) → mobile → otp
-// → pan → document → review → decided. The backend decides every outcome.
+// Steps: welcome → consent → question (repeated, driven by the backend) → review → decided.
+// No personal or identity details (phone, PAN, documents) are ever collected.
+// The backend decides every outcome.
 const CURRENCY_QUESTIONS = new Set(["net_salary", "vehicle_price", "loan_amount"]);
-const SAFE_EXPLANATION_FACTORS = new Map([
-  ["Loan size relative to vehicle price", "factorLoanVehicle"],
-  ["Loan amount", "factorLoanAmount"],
-  ["Age", "factorAge"],
-  ["Existing active loan", "factorActiveLoan"],
-  ["Vehicle", "factorVehicle"],
-]);
-const EXPLANATION_STRENGTHS = new Map([
-  ["slight", "factorStrengthSlight"],
-  ["moderate", "factorStrengthModerate"],
-  ["strong", "factorStrengthStrong"],
-]);
+// Index of the current stage in the stepper; "decided" marks every stage complete.
+const STAGE_BY_STEP = { question: 0, review: 1, decided: 3 };
+const SVG_NS = "http://www.w3.org/2000/svg";
+// Saarthi's mark: a steering wheel (a "saarthi" is a charioteer — the one who guides).
+const AVATAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.2"/><path d="M12 14.2v6.2M9.9 11.3 3.7 9.6M14.1 11.3l6.2-1.7"/></svg>';
+const DECISION_ICONS = {
+  APPROVED: "M5 12.5l4.5 4.5L19 7.5",
+  DECLINED: "M7 7l10 10M17 7 7 17",
+  MANUAL_REVIEW: "M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
+};
 const dictionaries = { en, hi };
 const state = {
   language: readLanguage(),
@@ -40,13 +33,10 @@ const state = {
   question: null,
   progress: { answered: 0, total: 0 },
   answers: [],
-  challenge: null,
   decision: null,
   busy: false,
-  projectAssistantEnabled: null,
-  projectAssistantModel: null,
-  projectAssistantCheckFailed: false,
 };
+const assistant = { history: [], busy: false, started: false };
 const SESSION_KEY = "loan-chat-application";
 const $ = (selector) => document.querySelector(selector);
 const messages = $("#messages");
@@ -69,94 +59,114 @@ function persistSession() {
   } catch { /* session storage unavailable */ }
 }
 function t(key) { return dictionaries[state.language][key] ?? dictionaries.en[key] ?? key; }
+function locale() { return dictionaries[state.language].locale; }
 function currency(value) {
-  return new Intl.NumberFormat(dictionaries[state.language].locale, {
-    style: "currency", currency: "INR", maximumFractionDigits: 0,
-  }).format(Number(value));
+  return new Intl.NumberFormat(locale(), { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(value));
+}
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function avatar() {
+  const node = el("span", "agent-avatar"); node.setAttribute("aria-hidden", "true"); node.innerHTML = AVATAR_SVG; return node;
 }
 
 function progressPercent() {
   const { answered, total } = state.progress;
-  const questionShare = total ? Math.round((answered / total) * 70) : 0;
+  const questionShare = total ? Math.round((answered / total) * 80) : 0;
   return ({
-    welcome: 0, consent: 5, consentDeclined: 0, question: 5 + questionShare,
-    mobile: 78, otp: 82, pan: 86, document: 90, review: 95, decided: 100,
+    welcome: 0, consent: 5, consentDeclined: 0, question: 5 + questionShare, review: 90, decided: 100,
   })[state.step] ?? 0;
+}
+
+function renderStepper() {
+  const current = STAGE_BY_STEP[state.step] ?? -1;
+  const stepper = $("#stepper");
+  stepper.setAttribute("aria-label", t("stagesLabel"));
+  stepper.replaceChildren(...t("stages").map((label, index) => {
+    const item = el("li");
+    if (index < current) item.className = "is-done";
+    if (index === current) { item.className = "is-current"; item.setAttribute("aria-current", "step"); }
+    const dot = el("span", "step-dot", index < current ? "✓" : String(index + 1)); dot.setAttribute("aria-hidden", "true");
+    item.append(dot, el("span", "step-label", label));
+    return item;
+  }));
 }
 
 function updateChrome() {
   document.documentElement.lang = state.language === "hi" ? "hi" : "en";
-  $("#eyebrow").textContent = t("eyebrow"); $("#page-title").textContent = t("title"); $("#intro-copy").textContent = t("intro");
-  $("#privacy-note").textContent = t("privacy"); $("#prototype-note").textContent = t("prototype");
-  $("#brand-subtitle").textContent = t("brandSubtitle");
-  const methodLabels = {
-    "ai-methods-kicker": "aiPanelKicker", "ai-methods-title": "aiPanelTitle", "ai-methods-intro": "aiPanelIntro",
-    "ml-type": "mlType", "ml-title": "mlTitle", "ml-description": "mlDescription",
-    "explain-type": "explainType", "explain-title": "explainTitle", "explain-description": "explainDescription",
-    "genai-type": "genaiType", "genai-title": "genaiTitle", "genai-description": "genaiDescription",
+  const text = {
+    "eyebrow": "eyebrow", "page-title": "title", "intro-copy": "intro", "brand-subtitle": "brandSubtitle",
+    "highlight-time": "highlightTime", "highlight-docs": "highlightDocs", "highlight-instant": "highlightInstant",
+    "chat-name": "assistantLabel", "chat-status": "chatStatus", "privacy-note": "privacy", "footer-ask": "footerAsk",
+    "launcher-label": "launcher", "assistant-title": "assistantLabel", "assistant-tagline": "assistantTagline",
+    "assistant-input-label": "assistantInputLabel", "assistant-note": "assistantNote",
   };
-  for (const [id, key] of Object.entries(methodLabels)) $("#" + id).textContent = t(key);
-  $("#genai-demo-title").textContent = t("genaiDemoTitle");
-  $("#genai-demo-help").textContent = t("genaiDemoHelp");
-  $("#genai-question-label").textContent = t("genaiQuestionLabel");
-  $("#genai-question").placeholder = t("genaiQuestionPlaceholder");
-  $("#genai-ask").textContent = t("genaiAsk");
-  $("#genai-status").textContent = state.projectAssistantEnabled === true
-    ? t("genaiReady").replace("{model}", state.projectAssistantModel ?? "OpenAI")
-    : state.projectAssistantEnabled === false ? t("genaiNeedsKey")
-      : state.projectAssistantCheckFailed ? t("genaiUnavailable") : t("genaiChecking");
-  $("#genai-question").disabled = state.projectAssistantEnabled !== true;
-  $("#genai-ask").disabled = state.projectAssistantEnabled !== true;
+  for (const [id, key] of Object.entries(text)) $("#" + id).textContent = t(key);
+  $("#assistant-input").placeholder = t("assistantPlaceholder");
+  $("#assistant-send").setAttribute("aria-label", t("assistantSend"));
+  $("#assistant-close").setAttribute("aria-label", t("assistantClose"));
   const percent = progressPercent();
   $("#progress-count").textContent = `${percent}%`;
   $(".progress-track").setAttribute("aria-valuenow", String(percent));
   $(".progress-value").style.width = `${percent}%`;
   $("#progress-label").textContent = t(state.step === "welcome" ? "start" : "progress");
+  renderStepper();
   $("#language").value = state.language;
   $("#language").disabled = Boolean(state.applicationId);
   $("#language").title = state.applicationId ? t("languageLocked") : "";
 }
 
-function bot(text) {
-  const item = document.createElement("article"); item.className = "message bot-message system-message";
-  const label = document.createElement("span"); label.className = "message-label"; label.textContent = t("assistantLabel");
-  const bubble = document.createElement("p"); bubble.className = "bubble message-copy"; bubble.textContent = text;
-  item.append(label, bubble); messages.append(item); item.scrollIntoView({ block: "nearest" });
+function botMessage(container, text) {
+  const item = el("article", "message bot-message");
+  const body = el("div", "message-body");
+  body.append(el("span", "message-label", t("assistantLabel")), el("p", "bubble message-copy", text));
+  item.append(avatar(), body);
+  container.append(item);
+  container.scrollTop = container.scrollHeight;
+  return item;
 }
-function applicant(text) {
-  const item = document.createElement("article"); item.className = "message applicant-message";
-  const label = document.createElement("span"); label.className = "message-label"; label.textContent = t("applicantLabel");
-  const answer = document.createElement("p"); answer.className = "answer-text"; answer.textContent = text;
-  item.append(label, answer);
-  messages.append(item); item.scrollIntoView({ block: "nearest" });
+function applicantMessage(container, text) {
+  const item = el("article", "message applicant-message");
+  item.append(el("span", "message-label", t("applicantLabel")), el("p", "answer-text", text));
+  container.append(item);
+  container.scrollTop = container.scrollHeight;
 }
-function maskMobile(number) { return `••••••${number.slice(-4)}`; }
+function typingIndicator(container) {
+  const item = el("div", "message bot-message typing-row"); item.setAttribute("aria-hidden", "true");
+  const dots = el("span", "typing"); dots.append(el("span"), el("span"), el("span"));
+  item.append(avatar(), dots); container.append(item); container.scrollTop = container.scrollHeight;
+  return item;
+}
+function bot(text) { botMessage(messages, text); }
+function applicant(text) { applicantMessage(messages, text); }
+
 function button(label, action, className = "primary-button") {
-  const control = document.createElement("button"); control.type = "button"; control.className = className;
-  control.textContent = label; control.disabled = state.busy; control.addEventListener("click", action); return control;
+  const control = el("button", className, label); control.type = "button";
+  control.disabled = state.busy; control.addEventListener("click", action); return control;
 }
 function submitButton(label) {
-  const control = document.createElement("button"); control.type = "submit"; control.className = "primary-button";
-  control.textContent = state.busy ? t("working") : label; control.disabled = state.busy; return control;
+  const control = el("button", "primary-button", state.busy ? t("working") : label); control.type = "submit";
+  control.disabled = state.busy; return control;
 }
 function field(labelText, helpText, input, prefix) {
-  const label = document.createElement("label"); label.className = "field-label"; label.htmlFor = "answer"; label.textContent = labelText;
-  const help = document.createElement("span"); help.className = "field-help"; help.id = "answer-help"; help.textContent = helpText || "";
-  const error = document.createElement("span"); error.id = "answer-error"; error.className = "field-error"; error.setAttribute("role", "alert");
+  const label = el("label", "field-label", labelText); label.htmlFor = "answer";
+  const help = el("span", "field-help", helpText || ""); help.id = "answer-help";
+  const error = el("span", "field-error"); error.id = "answer-error"; error.setAttribute("role", "alert");
   input.id = "answer"; input.required = true; input.setAttribute("aria-describedby", "answer-help answer-error");
   form.append(label);
-  if (prefix) { const span = document.createElement("span"); span.className = "currency-prefix"; span.textContent = prefix; form.append(span); input.classList.add("currency-input"); }
+  if (prefix) { form.append(el("span", "currency-prefix", prefix)); input.classList.add("currency-input"); }
   form.append(input, help, error);
 }
 function showError(message) {
   const error = $("#answer-error");
   if (error) { error.textContent = message; return; }
-  const alert = document.createElement("p");
-  alert.className = "message bot-message";
+  const alert = el("p", "message alert-message", message);
   alert.setAttribute("role", "alert");
-  alert.textContent = message;
   messages.append(alert);
-  alert.scrollIntoView({ block: "nearest" });
+  messages.scrollTop = messages.scrollHeight;
 }
 function errorMessage(error) {
   if (error?.status === 0) return t("backendOffline");
@@ -173,8 +183,8 @@ function renderQuestionInput(question) {
   let input;
   if (question.answer_type === "choice") {
     input = document.createElement("select");
-    const placeholder = document.createElement("option"); placeholder.value = ""; placeholder.textContent = t("choose"); input.append(placeholder);
-    for (const choice of question.choices) { const option = document.createElement("option"); option.value = choice.value; option.textContent = choice.label; input.append(option); }
+    const placeholder = el("option", "", t("choose")); placeholder.value = ""; input.append(placeholder);
+    for (const choice of question.choices) { const option = el("option", "", choice.label); option.value = choice.value; input.append(option); }
   } else {
     input = document.createElement("input"); input.autocomplete = "off";
     if (question.answer_type === "integer") {
@@ -189,7 +199,8 @@ function renderQuestionInput(question) {
   }
   if (state.draftAnswer !== undefined) input.value = state.draftAnswer;
   const prefix = CURRENCY_QUESTIONS.has(question.question_id) ? t("currencyPrefix") : null;
-  field(question.prompt, t(`${question.question_id}Help`) === `${question.question_id}Help` ? "" : t(`${question.question_id}Help`), input, prefix);
+  const helpKey = `${question.question_id}Help`;
+  field(question.prompt, t(helpKey) === helpKey ? "" : t(helpKey), input, prefix);
 }
 
 function renderForm() {
@@ -218,22 +229,6 @@ function renderForm() {
       return;
     case "question":
       renderQuestionInput(state.question); break;
-    case "mobile": {
-      const input = document.createElement("input"); input.type = "tel"; input.inputMode = "tel"; input.maxLength = 16; input.autocomplete = "tel";
-      field(t("mobile"), t("mobileHelp"), input); break;
-    }
-    case "otp": {
-      const input = document.createElement("input"); input.type = "text"; input.inputMode = "numeric"; input.maxLength = 6; input.autocomplete = "one-time-code";
-      field(t("otp"), `${t("otpHelp")} ${state.challenge.mock_code}`, input); break;
-    }
-    case "pan": {
-      const input = document.createElement("input"); input.type = "text"; input.maxLength = 10; input.autocomplete = "off"; input.style.textTransform = "uppercase";
-      field(t("pan"), t("panHelp"), input); break;
-    }
-    case "document": {
-      const input = document.createElement("input"); input.type = "file"; input.accept = "application/pdf,image/jpeg,image/png";
-      field(t("document"), t("documentHelp"), input); break;
-    }
     case "review":
       renderReview(); return;
     default:
@@ -244,130 +239,67 @@ function renderForm() {
 }
 
 function renderReview() {
-  const heading = document.createElement("h2"); heading.className = "review-heading"; heading.textContent = t("reviewTitle");
-  const notice = document.createElement("p"); notice.className = "review-notice"; notice.textContent = t("reviewLocked");
-  const list = document.createElement("dl"); list.className = "review-list";
+  const heading = el("h2", "review-heading", t("reviewTitle"));
+  const notice = el("p", "review-notice", t("reviewLocked"));
+  const list = el("dl", "review-list");
+  const submitControl = button(state.busy ? t("working") : t("submit"), submit);
   if (!state.answers.length) {
-    const savedNotice = document.createElement("p"); savedNotice.className = "review-notice"; savedNotice.textContent = t("savedAnswersNotice");
-    form.append(heading, notice, savedNotice, list, button(state.busy ? t("working") : t("submit"), submit));
+    form.append(heading, notice, el("p", "review-notice", t("savedAnswersNotice")), submitControl);
     return;
   }
-  for (const { prompt, display } of state.answers) {
-    const term = document.createElement("dt"); term.textContent = prompt;
-    const detail = document.createElement("dd"); detail.textContent = display; list.append(term, detail);
-  }
-  form.append(heading, notice, list, button(state.busy ? t("working") : t("submit"), submit));
+  for (const { prompt, display } of state.answers) list.append(el("dt", "", prompt), el("dd", "", display));
+  form.append(heading, notice, list, submitControl);
 }
 
 function renderDecision() {
-  const result = state.decision;
-  const heading = document.createElement("h2");
-  heading.className = "review-heading";
-  heading.textContent = t("resultTitle");
-  const outcome = document.createElement("p");
-  outcome.className = "review-notice decision-result";
-  outcome.textContent = t({
-    APPROVED: "approved",
-    DECLINED: "declinedDecision",
-    MANUAL_REVIEW: "manualReview",
-  }[result?.decision] ?? "decisionUnknown");
-  const caveat = document.createElement("p");
-  caveat.className = "review-notice";
-  caveat.textContent = t("prototypeDecisionNote");
-  form.append(heading, outcome, caveat);
-
-  const explanation = result?.explanation;
-  const groups = [
-    [explanation?.factors_raising_decline_score ?? [], "factorsRaising"],
-    [explanation?.factors_lowering_decline_score ?? [], "factorsLowering"],
-  ].map(([items, label]) => [
-    items.filter((item) => SAFE_EXPLANATION_FACTORS.has(item.factor) && EXPLANATION_STRENGTHS.has(item.strength)),
-    label,
-  ]).filter(([items]) => items.length);
-
-  if (groups.length) {
-    const factorsHeading = document.createElement("h3");
-    factorsHeading.className = "review-heading explanation-heading";
-    factorsHeading.textContent = t("explanationTitle");
-    form.append(factorsHeading);
-    for (const [items, label] of groups) {
-      const group = document.createElement("section");
-      group.className = "factor-group";
-      const groupHeading = document.createElement("h4");
-      groupHeading.textContent = t(label);
-      const list = document.createElement("ul");
-      for (const item of items) {
-        const row = document.createElement("li");
-        row.textContent = `${t(SAFE_EXPLANATION_FACTORS.get(item.factor))}: ${t(EXPLANATION_STRENGTHS.get(item.strength))}`;
-        list.append(row);
-      }
-      group.append(groupHeading, list);
-      form.append(group);
-    }
+  const decision = state.decision?.decision;
+  const variant = { APPROVED: "approved", DECLINED: "declined", MANUAL_REVIEW: "review" }[decision];
+  const card = el("div", `decision-card${variant ? ` decision-${variant}` : ""}`);
+  if (DECISION_ICONS[decision]) {
+    const icon = el("span", "decision-icon"); icon.setAttribute("aria-hidden", "true");
+    const svg = document.createElementNS(SVG_NS, "svg"); svg.setAttribute("viewBox", "0 0 24 24");
+    const path = document.createElementNS(SVG_NS, "path"); path.setAttribute("d", DECISION_ICONS[decision]);
+    svg.append(path); icon.append(svg); card.append(icon);
   }
-  const nextActionKey = {
+  card.append(
+    el("h2", "review-heading", t("resultTitle")),
+    el("p", "decision-result", t({ APPROVED: "approved", DECLINED: "declinedDecision", MANUAL_REVIEW: "manualReview" }[decision] ?? "decisionUnknown")),
+  );
+  const nextActionKey = decision === "MANUAL_REVIEW" ? "nextReview" : {
     review_sanction_documents: "nextApproved",
     view_decision: "nextDeclined",
-  }[result?.next_action];
-  if (nextActionKey) {
-    const nextStep = document.createElement("p");
-    nextStep.className = "review-notice next-step";
-    nextStep.textContent = t(nextActionKey);
-    form.append(nextStep);
-  }
-  form.append(button(t("startAgain"), restart, "secondary-button"));
+  }[state.decision?.next_action];
+  if (nextActionKey) card.append(el("p", "review-notice next-step", t(nextActionKey)));
+  const actions = el("div", "decision-actions");
+  actions.append(button(t("startAgain"), restart, "secondary-button"));
+  card.append(actions);
+  form.append(card);
 }
 
 function refresh() { updateChrome(); renderForm(); }
 
-async function loadProjectAssistantStatus() {
-  try {
-    const status = await getProjectAssistantStatus();
-    state.projectAssistantEnabled = status.enabled;
-    state.projectAssistantModel = status.model;
-  } catch {
-    state.projectAssistantCheckFailed = true;
-  }
-  updateChrome();
-}
-
-$("#genai-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const input = $("#genai-question");
-  const output = $("#genai-response");
-  const question = input.value.trim();
-  if (!question || state.projectAssistantEnabled !== true) return;
-  input.value = "";
-  $("#genai-ask").disabled = true;
-  $("#genai-ask").textContent = t("genaiWorking");
-  output.textContent = "";
-  try {
-    const response = await askProjectAssistant(question, dictionaries[state.language].locale);
-    output.textContent = response.answer;
-  } catch (error) {
-    output.textContent = error?.status === 503 ? t("genaiNeedsKey") : t("genaiUnavailable");
-  } finally {
-    $("#genai-ask").textContent = t("genaiAsk");
-    $("#genai-ask").disabled = state.projectAssistantEnabled !== true;
-  }
-});
-
 async function withBusy(action) {
   if (state.busy) return;
   state.busy = true; renderForm();
+  const typing = typingIndicator(messages);
   try { await action(); }
-  catch (error) { state.busy = false; renderForm(); showError(errorMessage(error)); return; }
+  catch (error) { typing.remove(); state.busy = false; renderForm(); showError(errorMessage(error)); return; }
+  typing.remove();
   state.busy = false; refresh();
+}
+
+async function ensureReady() {
+  const readiness = await getReadiness();
+  if (readiness.status !== "ready" || !readiness.model_loaded || !readiness.reference_tables_loaded) {
+    const error = new Error("Readiness check failed"); error.status = 503; throw error;
+  }
 }
 
 function begin() {
   return withBusy(async () => {
-    const readiness = await getReadiness();
-    if (readiness.status !== "ready" || !readiness.model_loaded || !readiness.reference_tables_loaded) {
-      const error = new Error("Readiness check failed"); error.status = 503; throw error;
-    }
+    await ensureReady();
     applicant(t("yes"));
-    const created = await startApplication(dictionaries[state.language].locale);
+    const created = await startApplication(locale());
     state.applicationId = created.application_id;
     persistSession();
     showQuestionnaire(await getNextQuestion(state.applicationId));
@@ -376,10 +308,7 @@ function begin() {
 
 function showConsent() {
   return withBusy(async () => {
-    const readiness = await getReadiness();
-    if (readiness.status !== "ready" || !readiness.model_loaded || !readiness.reference_tables_loaded) {
-      const error = new Error("Readiness check failed"); error.status = 503; throw error;
-    }
+    await ensureReady();
     state.step = "consent";
     bot(t("consent"));
   });
@@ -394,24 +323,22 @@ async function restoreExistingApplication() {
     if (!saved) { state.busy = false; restart(); return; }
     const application = await getApplication(saved.applicationId);
     state.applicationId = application.application_id;
-    state.language = application.locale === "hi-IN" ? "hi" : "en";
+    const resumedLanguage = application.locale === "hi-IN" ? "hi" : "en";
+    if (resumedLanguage !== state.language) { state.language = resumedLanguage; resetAssistant(); }
     messages.replaceChildren();
     if (application.status === "APPROVED" || application.status === "DECLINED") {
       state.decision = await getDecision(state.applicationId);
       state.step = "decided";
       bot(t("resumedApplication"));
-    } else if (application.status === "MANUAL_REVIEW") {
-      state.decision = { decision: "MANUAL_REVIEW" };
-      state.step = "decided";
-      bot(t("manualReview"));
-    } else if (application.status === "AWAITING_VERIFICATION" || application.status === "READY_FOR_REVIEW") {
-      const verification = await getVerification(state.applicationId);
-      if (!verification.mobile_verified) state.step = "mobile";
-      else if (!verification.pan_verified) state.step = "pan";
-      else if (!verification.document_received) state.step = "document";
-      else state.step = "review";
+    } else if (application.status === "READY_FOR_REVIEW") {
+      state.step = "review";
       bot(t("resumedApplication"));
-      bot(t(state.step === "mobile" ? "mobile" : state.step === "pan" ? "pan" : state.step === "document" ? "document" : "review"));
+      bot(t("review"));
+    } else if (application.status !== "STARTED" && application.status !== "COLLECTING_INFORMATION") {
+      // An application left over from the old identity-check flow can't be submitted any more.
+      state.busy = false;
+      restart();
+      return;
     } else {
       bot(t("resumedApplication"));
       showQuestionnaire(await getNextQuestion(state.applicationId));
@@ -431,7 +358,7 @@ function showQuestionnaire(progress) {
   if (progress.question) {
     state.step = "question"; state.question = progress.question; bot(progress.question.prompt);
   } else {
-    state.step = "mobile"; state.question = null; bot(t("verificationIntro")); bot(t("mobile"));
+    state.step = "review"; state.question = null; bot(t("review"));
   }
 }
 
@@ -453,47 +380,17 @@ async function handleAnswer(raw) {
   showQuestionnaire(progress);
 }
 
-async function handleVerification(input) {
-  if (state.step === "mobile") {
-    // Accept common ways of writing an Indian number: spaces, dashes, +91, or a leading 0.
-    const mobile = input.value.replace(/[\s-]/g, "").replace(/^(\+?91|0)(?=\d{10}$)/, "");
-    if (!/^[6-9]\d{9}$/.test(mobile)) throw new Error(t("mobileError"));
-    state.challenge = await requestOtp(state.applicationId, mobile);
-    applicant(maskMobile(mobile)); state.step = "otp"; bot(t("otp"));
-  } else if (state.step === "otp") {
-    const result = await confirmOtp(state.applicationId, state.challenge.challenge_id, input.value.trim());
-    applicant("••••••");
-    if (result.status === "MANUAL_REVIEW") {
-      state.decision = { decision: "MANUAL_REVIEW" };
-      state.step = "decided";
-      bot(t("manualReview"));
-      return;
-    }
-    state.step = "pan"; bot(t("pan"));
-  } else if (state.step === "pan") {
-    const pan = input.value.trim().toUpperCase();
-    if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) throw new Error(t("panError"));
-    await verifyPan(state.applicationId, pan);
-    applicant(t("panMasked")); state.step = "document"; bot(t("document"));
-  } else if (state.step === "document") {
-    const file = input.files?.[0];
-    if (!file) throw new Error(t("documentRequired"));
-    await recordIncomeDocument(state.applicationId, file);
-    applicant(file.name); state.step = "review"; bot(t("review"));
-  }
-}
-
 function submit() {
   return withBusy(async () => {
-    const decision = await submitApplication(state.applicationId);
-    state.decision = decision; state.step = "decided";
-    bot(t("resultTitle"));
+    state.decision = await submitApplication(state.applicationId);
+    state.step = "decided";
+    bot(t("resultIntro"));
   });
 }
 
 function restart() {
   messages.replaceChildren();
-  Object.assign(state, { step: "welcome", applicationId: null, question: null, progress: { answered: 0, total: 0 }, answers: [], challenge: null, decision: null, draftAnswer: undefined });
+  Object.assign(state, { step: "welcome", applicationId: null, question: null, progress: { answered: 0, total: 0 }, answers: [], decision: null, draftAnswer: undefined });
   persistSession();
   bot(t("welcome")); refresh();
 }
@@ -502,13 +399,12 @@ form.addEventListener("submit", (event) => {
   event.preventDefault();
   const input = $("#answer");
   if (!input) return;
-  const raw = input.type === "file" ? "file" : input.value.trim();
+  const raw = input.value.trim();
   if (!raw || !input.checkValidity()) { showError(t("validationSummary")); input.focus(); return; }
-  if (state.step === "question") state.draftAnswer = raw;
+  state.draftAnswer = raw;
   withBusy(async () => {
     try {
-      if (state.step === "question") await handleAnswer(raw);
-      else await handleVerification(input);
+      await handleAnswer(raw);
     } catch (error) {
       if (error instanceof Error && !("status" in error)) { const wrapped = new Error(error.message); wrapped.detail = error.message; throw wrapped; }
       throw error;
@@ -516,16 +412,89 @@ form.addEventListener("submit", (event) => {
   });
 });
 
+// --- Saarthi: free-form customer questions -------------------------------------
+// Separate from the application: it never sees answers, identifiers or decisions.
+
+const assistantPanel = $("#assistant-panel");
+const assistantMessages = $("#assistant-messages");
+const assistantInput = $("#assistant-input");
+const launcher = $("#assistant-launcher");
+
+function resetAssistant() {
+  assistant.history = [];
+  assistant.started = false;
+  assistantMessages.replaceChildren();
+  botMessage(assistantMessages, t("assistantGreeting"));
+  renderSuggestions();
+}
+
+function renderSuggestions() {
+  const container = $("#assistant-suggestions");
+  if (assistant.started) { container.replaceChildren(); return; }
+  container.replaceChildren(...t("suggestions").map((text) => {
+    const chip = el("button", "chip", text); chip.type = "button";
+    chip.addEventListener("click", () => askSaarthi(text));
+    return chip;
+  }));
+}
+
+function setAssistantOpen(open) {
+  assistantPanel.hidden = !open;
+  launcher.setAttribute("aria-expanded", String(open));
+  if (open) assistantInput.focus();
+  else launcher.focus();
+}
+
+async function askSaarthi(question) {
+  const text = question.trim();
+  if (!text || assistant.busy) return;
+  assistant.busy = true;
+  assistant.started = true;
+  renderSuggestions(); // removes the chips, so keep keyboard focus in the panel
+  assistantInput.focus();
+  $("#assistant-send").disabled = true;
+  applicantMessage(assistantMessages, text);
+  const typing = typingIndicator(assistantMessages);
+  try {
+    const reply = await askAssistant(text, locale(), assistant.history);
+    typing.remove();
+    botMessage(assistantMessages, reply.answer);
+    assistant.history.push({ role: "user", content: text }, { role: "assistant", content: reply.answer.slice(0, 1500) });
+    assistant.history = assistant.history.slice(-12);
+  } catch {
+    typing.remove();
+    botMessage(assistantMessages, t("assistantError"));
+  } finally {
+    assistant.busy = false;
+    $("#assistant-send").disabled = false;
+  }
+}
+
+launcher.addEventListener("click", () => setAssistantOpen(assistantPanel.hidden));
+$("#footer-ask").addEventListener("click", () => setAssistantOpen(true));
+$("#assistant-close").addEventListener("click", () => setAssistantOpen(false));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !assistantPanel.hidden) setAssistantOpen(false);
+});
+$("#assistant-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const question = assistantInput.value;
+  assistantInput.value = "";
+  assistantInput.focus();
+  void askSaarthi(question);
+});
+
 $("#language").addEventListener("change", (event) => {
   state.language = event.target.value;
   try { localStorage.setItem("loan-chat-language", state.language); } catch { /* storage unavailable */ }
-  $("#genai-response").textContent = "";
+  resetAssistant();
   if (!state.applicationId) restart();
   else refresh();
 });
 
+for (const node of document.querySelectorAll(".agent-avatar")) node.innerHTML = AVATAR_SVG;
 updateChrome();
-void loadProjectAssistantStatus();
+resetAssistant();
 const existingSession = readSession();
 if (existingSession) {
   state.step = "resuming";

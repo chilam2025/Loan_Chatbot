@@ -3,62 +3,75 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f3f5f7" />
+    <meta name="theme-color" content="#0b1d33" />
     <meta name="api-base-url" content="/api/v1" />
-    <title>ABC Credit | AI loan assessment prototype</title>
+    <title>ABC Credit | Two-wheeler loans</title>
     <link rel="stylesheet" href="/src/styles.css" />
     <script type="module" src="/src/main.js"></script>
   </head>
   <body>
+    <div class="hero-backdrop" aria-hidden="true"></div>
     <main class="app-shell">
       <header class="topbar">
-          <a class="brand" href="#"><span class="brand-mark" aria-hidden="true">ABC</span><span>ABC Credit <small id="brand-subtitle">AI LOAN ASSESSMENT</small></span></a>
+        <a class="brand" href="#"><span class="brand-mark" aria-hidden="true">ABC</span><span class="brand-text">ABC Credit <small id="brand-subtitle">TWO-WHEELER LOANS</small></span></a>
         <label class="language-picker"><span class="sr-only" id="language-label">Language</span><select id="language" aria-labelledby="language-label" aria-describedby="language-note"><option value="en">English</option><option value="hi">हिन्दी</option></select><span class="sr-only" id="language-note">Language can be changed until the application starts.</span></label>
       </header>
+
       <section class="application" aria-labelledby="page-title">
         <div class="intro">
-          <p class="eyebrow" id="eyebrow">VEHICLE LOAN</p>
-          <h1 id="page-title">A few details to get started</h1>
-          <p class="intro-copy" id="intro-copy">Answer a few questions at your own pace. You can review your details before submitting.</p>
+          <p class="eyebrow" id="eyebrow">TWO-WHEELER LOANS</p>
+          <h1 id="page-title">Your next ride, financed in minutes</h1>
+          <p class="intro-copy" id="intro-copy">Answer a few quick questions and get a decision right away.</p>
+          <ul class="highlights" aria-label="Highlights">
+            <li><svg class="highlight-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span id="highlight-time">About 2 minutes</span></li>
+            <li><svg class="highlight-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M4 4l16 16"/></svg><span id="highlight-docs">No documents needed</span></li>
+            <li><svg class="highlight-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6z"/></svg><span id="highlight-instant">Instant decision</span></li>
+          </ul>
         </div>
-        <div class="progress-wrap"><div class="progress-meta"><span id="progress-label">Getting started</span><span id="progress-count">0%</span></div><div class="progress-track" role="progressbar" aria-label="Application progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-value"></div></div></div>
-        <div class="application-grid">
+
         <section class="chat-card" aria-label="Loan application conversation">
+          <header class="chat-header">
+            <span class="agent-avatar agent-avatar-lg" aria-hidden="true"></span>
+            <div class="chat-identity">
+              <p class="chat-name" id="chat-name">Saarthi</p>
+              <p class="chat-status"><span class="status-dot" aria-hidden="true"></span><span id="chat-status">Your loan guide · Online</span></p>
+            </div>
+            <div class="progress-wrap">
+              <div class="progress-meta"><span id="progress-label">Getting started</span><span id="progress-count">0%</span></div>
+              <div class="progress-track" role="progressbar" aria-label="Application progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-value"></div></div>
+            </div>
+          </header>
+          <ol class="stepper" id="stepper" aria-label="Application stages"></ol>
           <div id="messages" class="messages" tabindex="0" aria-label="Conversation history" aria-live="polite" aria-relevant="additions text"></div>
           <form id="response-form" class="response-form" novalidate></form>
-          <div class="chat-footer"><span class="secure-icon" aria-hidden="true">◈</span><span id="privacy-note">Your information is handled securely.</span></div>
+          <div class="chat-footer">
+            <span class="secure-note"><svg class="secure-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span id="privacy-note">Your information is handled securely.</span></span>
+            <button type="button" class="link-button" id="footer-ask">Have a question? Ask Saarthi</button>
+          </div>
         </section>
-        <aside class="ai-methods" aria-labelledby="ai-methods-title">
-          <p class="panel-kicker" id="ai-methods-kicker">PROJECT OVERVIEW</p>
-          <h2 id="ai-methods-title">AI in this prototype</h2>
-          <p class="panel-intro" id="ai-methods-intro"></p>
-          <article class="method-item">
-            <span class="method-index">01</span>
-            <div><p class="method-type" id="ml-type"></p><h3 id="ml-title"></h3><p id="ml-description"></p></div>
-          </article>
-          <article class="method-item">
-            <span class="method-index">02</span>
-            <div><p class="method-type" id="explain-type"></p><h3 id="explain-title"></h3><p id="explain-description"></p></div>
-          </article>
-          <article class="method-item method-status">
-            <span class="method-index">03</span>
-            <div><p class="method-type" id="genai-type"></p><h3 id="genai-title"></h3><p id="genai-description"></p></div>
-          </article>
-          <section class="genai-demo" aria-labelledby="genai-demo-title">
-            <h3 id="genai-demo-title">Ask about the project</h3>
-            <p id="genai-demo-help" class="genai-demo-help"></p>
-            <p id="genai-status" class="genai-status" role="status" aria-live="polite"></p>
-            <form id="genai-form">
-              <label for="genai-question" id="genai-question-label"></label>
-              <textarea id="genai-question" maxlength="500" rows="3" required></textarea>
-              <button id="genai-ask" class="primary-button" type="submit"></button>
-            </form>
-            <p id="genai-response" class="genai-response" role="status" aria-live="polite"></p>
-          </section>
-        </aside>
-        </div>
-        <p class="prototype-note" id="prototype-note">Academic prototype. Verification steps shown here are simulations.</p>
       </section>
     </main>
+
+    <button type="button" id="assistant-launcher" class="assistant-launcher" aria-expanded="false" aria-controls="assistant-panel">
+      <span class="agent-avatar" aria-hidden="true"></span><span id="launcher-label">Ask Saarthi</span>
+    </button>
+    <section id="assistant-panel" class="assistant-panel" role="dialog" aria-modal="false" aria-labelledby="assistant-title" hidden>
+      <header class="assistant-header">
+        <span class="agent-avatar" aria-hidden="true"></span>
+        <div>
+          <h2 id="assistant-title">Saarthi</h2>
+          <p id="assistant-tagline">Ask me anything about two-wheeler loans</p>
+        </div>
+        <button type="button" class="icon-button" id="assistant-close" aria-label="Close">✕</button>
+      </header>
+      <div id="assistant-messages" class="assistant-messages" tabindex="0" aria-live="polite" aria-label="Saarthi conversation"></div>
+      <div id="assistant-suggestions" class="assistant-suggestions"></div>
+      <form id="assistant-form" class="assistant-form">
+        <label class="sr-only" for="assistant-input" id="assistant-input-label">Your question</label>
+        <input id="assistant-input" type="text" maxlength="500" autocomplete="off" />
+        <button type="submit" class="send-button" id="assistant-send" aria-label="Send">➤</button>
+      </form>
+      <p class="assistant-note" id="assistant-note">Please don’t share personal details here.</p>
+    </section>
   </body>
 </html>

@@ -115,7 +115,7 @@ def test_saves_answers_and_returns_first_unanswered_question() -> None:
     assert application["status"] == "COLLECTING_INFORMATION"
 
 
-def test_completing_questionnaire_moves_to_verification() -> None:
+def test_completing_questionnaire_is_ready_to_submit_without_identity_checks() -> None:
     api = client()
     application_id = create_application(api)
 
@@ -127,15 +127,15 @@ def test_completing_questionnaire_moves_to_verification() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "application_id": application_id,
-        "status": "AWAITING_VERIFICATION",
+        "status": "READY_FOR_REVIEW",
         "answered_questions": 6,
         "total_questions": 6,
-        "next_action": "verify_identity",
+        "next_action": "review_and_submit",
         "question": None,
     }
     application = api.get(f"/api/v1/applications/{application_id}").json()
-    assert application["status"] == "AWAITING_VERIFICATION"
-    assert application["next_action"] == "verify_identity"
+    assert application["status"] == "READY_FOR_REVIEW"
+    assert application["next_action"] == "review_and_submit"
 
 
 @pytest.mark.parametrize(
@@ -224,7 +224,7 @@ def test_answers_cannot_change_after_questionnaire_completion() -> None:
     )
 
     assert response.status_code == 409
-    assert response.json()["detail"].endswith("AWAITING_VERIFICATION")
+    assert response.json()["detail"].endswith("READY_FOR_REVIEW")
 
 
 def test_vehicle_price_is_asked_before_loan_amount_and_ltv_is_never_asked() -> None:

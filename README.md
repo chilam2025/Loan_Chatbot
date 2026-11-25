@@ -3,8 +3,8 @@
 An academic vehicle-loan application prototype. The backend collects six model
 inputs, validates them, and calls the packaged CatBoost model. The browser only
 collects answers and presents the backend decision; it does not make credit
-decisions. OTP and PAN checks are simulations, and document upload records
-metadata only.
+decisions. The chatbot asks six questions and never
+collects names, phone numbers, PAN or documents.
 
 ## Start locally
 
@@ -35,6 +35,8 @@ active-loan status. Vehicle price is used to derive LTV. The private handoff
 contains the model and reference tables; use `smoke_test_model.py` to check the
 local installation. Do not commit model artifacts or raw applicant data.
 
+The short project report (fields kept, data issues, model choice, metrics,
+latency, and the chosen X and Y) is [`reports/final_report.md`](reports/final_report.md).
 The exploratory data-quality findings are in
 [`reports/phase_a_findings.md`](reports/phase_a_findings.md). The modelling
 pipeline and API contracts are documented under `docs/`.

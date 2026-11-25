@@ -107,12 +107,13 @@ class SQLAlchemyApplicationRepository:
             # (e.g. gender, net_salary) can never complete the current one.
             stored_ids = {answer.question_id for answer in application.answers}
             complete = {question.value for question in required_questions} <= stored_ids
+            # No identity checks: a completed questionnaire is ready to submit.
             application.status = (
-                ApplicationStatus.AWAITING_VERIFICATION.value
+                ApplicationStatus.READY_FOR_REVIEW.value
                 if complete
                 else ApplicationStatus.COLLECTING_INFORMATION.value
             )
-            application.next_action = "verify_identity" if complete else "answer_questions"
+            application.next_action = "review_and_submit" if complete else "answer_questions"
             application.updated_at = timestamp
             application.audit_events.append(
                 AuditEventModel(

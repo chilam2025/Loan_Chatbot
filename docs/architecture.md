@@ -19,8 +19,11 @@ frontend owns conversation presentation, accessibility, and user input capture.
 ## Component boundary
 
 The predictive and generative responsibilities remain deliberately separate.
-The OpenAI project assistant answers questions about the project using static
-project facts; it receives no applicant answers and has no decision tools.
+Saarthi, the customer assistant, answers free-form customer questions (eligibility,
+documents, EMI, application steps) with OpenAI and a fixed knowledge base, falling
+back to a built-in FAQ when OpenAI is not configured. It receives only the typed
+question and recent Saarthi chat turns: no applicant answers, identifiers or
+decisions, and it has no decision tools.
 
 ```text
 Applicant

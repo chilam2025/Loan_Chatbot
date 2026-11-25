@@ -32,6 +32,7 @@ postgres = [
 phase-b = "abc_credit.modeling.phase_b:main"
 phase-a = "abc_credit.phase_a:main"
 prepare-data = "abc_credit.preprocessing:main"
+benchmark-latency = "abc_credit.benchmark:main"
 
 [build-system]
 requires = ["hatchling"]

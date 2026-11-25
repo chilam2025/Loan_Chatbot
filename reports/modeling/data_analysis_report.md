@@ -195,6 +195,8 @@ The inference interface checks required fields, normalises types, rejects malfor
 The deployed candidate has 14 predictor fields, but these need not become 14 separate questions. Recommend one vehicle-catalogue selection to supply model description, make, variant and product. If vehicle price and loan amount are known, the backend can calculate LTV consistently. Location tier may be derived only from a validated mapping, not guessed. Gender and application ID are not questions required by this model.
 
 No empirically final minimum question set, completion-time target X, or decision-latency target Y has yet been established. Existing timings are batch timings and must not be claimed as single-request or end-to-end chatbot latency.
+
+Update: the final question set (six questions), X = 2 minutes and Y = 1 second, with a measured end-to-end latency benchmark, are in [the final report](../final_report.md).
 14. Limitations and remaining work
 1. Declined detection is weak and the benefit over an all-approved cost baseline is modest.
 2. The internal test score was inspected early; later work stopped using it. Full-data EDA also inspected distributions and target relationships. An internal test report cannot be described as completely untouched. No training fit on test rows was reported.
