@@ -1,7 +1,7 @@
 export default {
-  locale: "en-IN", currency: "INR", eyebrow: "VEHICLE LOAN", title: "A few details to get started",
-  intro: "Answer a few questions at your own pace. You can review your details before submitting.", progress: "Application progress", start: "Getting started", privacy: "Your information is handled securely.",
-  prototype: "Academic prototype. Verification steps shown here are simulations.", welcome: "Hello! I can guide you through a vehicle loan application. This should take a few minutes. Shall we begin?",
+  locale: "en-IN", currency: "INR", eyebrow: "ACADEMIC PROTOTYPE · VEHICLE LOAN", title: "Vehicle loan assessment assistant",
+  intro: "A guided application demonstrating how a trained ML model and model explanations fit into a loan workflow.", progress: "Application progress", start: "Getting started", privacy: "Your information is handled securely.",
+  prototype: "Research demonstration. Identity checks are simulated; uploaded documents are not stored.", welcome: "Welcome. This prototype collects six application inputs, then requests an estimate from a trained machine-learning model.",
   startButton: "Start application", consent: "May we use the information you provide to process this application?", consentHelp: "You can stop at any time. Verification in this prototype is simulated.", yes: "Yes, continue", no: "No, thank you",
   consentDeclined: "That’s okay. We won’t collect application details. You can return whenever you’re ready.", age: "How old are you?", ageHelp: "Enter your age in years.", ageError: "Enter your age as a whole number.",
   employment: "What type of work do you do?", choose: "Choose an option", salaried: "Salaried", selfEmployed: "Self-employed", otherWork: "Other",
@@ -32,4 +32,9 @@ export default {
   resuming: "Checking your saved application…",
   resumedApplication: "Your saved application has been restored. Let’s continue.",
   retryResume: "Try again",
+  brandSubtitle: "AI ASSESSMENT PROTOTYPE", assistantLabel: "Application guide", applicantLabel: "Your response",
+  aiPanelKicker: "PROJECT OVERVIEW", aiPanelTitle: "AI in this prototype", aiPanelIntro: "The components below are separate: the classifier estimates a historical outcome; the interface presents the result.",
+  mlType: "PREDICTIVE MACHINE LEARNING", mlTitle: "CatBoost classifier", mlDescription: "catboost-minimal-v2 uses six application inputs to estimate whether a historical application would be declined. The backend applies the configured threshold. This is not a repayment or default prediction.",
+  explainType: "MODEL EXPLAINABILITY", explainTitle: "SHAP-based factors", explainDescription: "The backend summarizes selected feature contributions as factors and relative strengths. The interface hides numeric contributions and does not let explanations change the model decision.",
+  genaiType: "GENERATIVE AI", genaiTitle: "No language model connected", genaiDescription: "This build uses preset English and Hindi prompts and messages. It does not currently call an LLM or generate responses. A constrained LLM integration is still needed to demonstrate generative AI at runtime.",
 };

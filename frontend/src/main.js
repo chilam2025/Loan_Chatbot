@@ -83,6 +83,14 @@ function updateChrome() {
   document.documentElement.lang = state.language === "hi" ? "hi" : "en";
   $("#eyebrow").textContent = t("eyebrow"); $("#page-title").textContent = t("title"); $("#intro-copy").textContent = t("intro");
   $("#privacy-note").textContent = t("privacy"); $("#prototype-note").textContent = t("prototype");
+  $("#brand-subtitle").textContent = t("brandSubtitle");
+  const methodLabels = {
+    "ai-methods-kicker": "aiPanelKicker", "ai-methods-title": "aiPanelTitle", "ai-methods-intro": "aiPanelIntro",
+    "ml-type": "mlType", "ml-title": "mlTitle", "ml-description": "mlDescription",
+    "explain-type": "explainType", "explain-title": "explainTitle", "explain-description": "explainDescription",
+    "genai-type": "genaiType", "genai-title": "genaiTitle", "genai-description": "genaiDescription",
+  };
+  for (const [id, key] of Object.entries(methodLabels)) $("#" + id).textContent = t(key);
   const percent = progressPercent();
   $("#progress-count").textContent = `${percent}%`;
   $(".progress-track").setAttribute("aria-valuenow", String(percent));
@@ -94,13 +102,16 @@ function updateChrome() {
 }
 
 function bot(text) {
-  const item = document.createElement("article"); item.className = "message bot-message";
-  const avatar = document.createElement("span"); avatar.className = "avatar"; avatar.setAttribute("aria-hidden", "true"); avatar.textContent = "A";
-  const bubble = document.createElement("p"); bubble.className = "bubble"; bubble.textContent = text;
-  item.append(avatar, bubble); messages.append(item); item.scrollIntoView({ block: "nearest" });
+  const item = document.createElement("article"); item.className = "message bot-message system-message";
+  const label = document.createElement("span"); label.className = "message-label"; label.textContent = t("assistantLabel");
+  const bubble = document.createElement("p"); bubble.className = "bubble message-copy"; bubble.textContent = text;
+  item.append(label, bubble); messages.append(item); item.scrollIntoView({ block: "nearest" });
 }
 function applicant(text) {
-  const item = document.createElement("p"); item.className = "message applicant-message bubble"; item.textContent = text;
+  const item = document.createElement("article"); item.className = "message applicant-message";
+  const label = document.createElement("span"); label.className = "message-label"; label.textContent = t("applicantLabel");
+  const answer = document.createElement("p"); answer.className = "answer-text"; answer.textContent = text;
+  item.append(label, answer);
   messages.append(item); item.scrollIntoView({ block: "nearest" });
 }
 function maskMobile(number) { return `••••••${number.slice(-4)}`; }
@@ -460,7 +471,8 @@ form.addEventListener("submit", (event) => {
 $("#language").addEventListener("change", (event) => {
   state.language = event.target.value;
   try { localStorage.setItem("loan-chat-language", state.language); } catch { /* storage unavailable */ }
-  refresh();
+  if (!state.applicationId) restart();
+  else refresh();
 });
 
 updateChrome();

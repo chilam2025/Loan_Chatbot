@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f4f6f2" />
+    <meta name="theme-color" content="#f3f5f7" />
     <meta name="api-base-url" content="/api/v1" />
-    <title>ABC Credit | Vehicle loan application</title>
+    <title>ABC Credit | AI loan assessment prototype</title>
     <link rel="stylesheet" href="/src/styles.css" />
     <script type="module" src="/src/main.js"></script>
   </head>
   <body>
     <main class="app-shell">
       <header class="topbar">
-          <a class="brand" href="#"><span class="brand-mark" aria-hidden="true">A</span><span>ABC Credit</span></a>
+          <a class="brand" href="#"><span class="brand-mark" aria-hidden="true">ABC</span><span>ABC Credit <small id="brand-subtitle">AI LOAN ASSESSMENT</small></span></a>
         <label class="language-picker"><span class="sr-only" id="language-label">Language</span><select id="language" aria-labelledby="language-label" aria-describedby="language-note"><option value="en">English</option><option value="hi">हिन्दी</option></select><span class="sr-only" id="language-note">Language can be changed until the application starts.</span></label>
       </header>
       <section class="application" aria-labelledby="page-title">
@@ -22,11 +22,30 @@
           <p class="intro-copy" id="intro-copy">Answer a few questions at your own pace. You can review your details before submitting.</p>
         </div>
         <div class="progress-wrap"><div class="progress-meta"><span id="progress-label">Getting started</span><span id="progress-count">0%</span></div><div class="progress-track" role="progressbar" aria-label="Application progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-value"></div></div></div>
+        <div class="application-grid">
         <section class="chat-card" aria-label="Loan application conversation">
           <div id="messages" class="messages" tabindex="0" aria-label="Conversation history" aria-live="polite" aria-relevant="additions text"></div>
           <form id="response-form" class="response-form" novalidate></form>
           <div class="chat-footer"><span class="secure-icon" aria-hidden="true">◈</span><span id="privacy-note">Your information is handled securely.</span></div>
         </section>
+        <aside class="ai-methods" aria-labelledby="ai-methods-title">
+          <p class="panel-kicker" id="ai-methods-kicker">PROJECT OVERVIEW</p>
+          <h2 id="ai-methods-title">AI in this prototype</h2>
+          <p class="panel-intro" id="ai-methods-intro"></p>
+          <article class="method-item">
+            <span class="method-index">01</span>
+            <div><p class="method-type" id="ml-type"></p><h3 id="ml-title"></h3><p id="ml-description"></p></div>
+          </article>
+          <article class="method-item">
+            <span class="method-index">02</span>
+            <div><p class="method-type" id="explain-type"></p><h3 id="explain-title"></h3><p id="explain-description"></p></div>
+          </article>
+          <article class="method-item method-status">
+            <span class="method-index">03</span>
+            <div><p class="method-type" id="genai-type"></p><h3 id="genai-title"></h3><p id="genai-description"></p></div>
+          </article>
+        </aside>
+        </div>
         <p class="prototype-note" id="prototype-note">Academic prototype. Verification steps shown here are simulations.</p>
       </section>
     </main>
