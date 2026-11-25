@@ -20,8 +20,9 @@ frontend owns conversation presentation, accessibility, and user input capture.
 
 The predictive and generative responsibilities remain deliberately separate.
 Saarthi, the customer assistant, answers free-form customer questions (eligibility,
-documents, EMI, application steps) with OpenAI and a fixed knowledge base, falling
-back to a built-in FAQ when OpenAI is not configured. It receives only the typed
+documents, EMI, application steps) with a hosted language model (Google Gemini,
+or OpenAI as a backup) and a fixed knowledge base. It falls back to a built-in FAQ
+when no key is configured or the provider fails. It receives only the typed
 question and recent Saarthi chat turns: no applicant answers, identifiers or
 decisions, and it has no decision tools.
 
@@ -42,13 +43,13 @@ Fitted preprocessing pipeline --> predictive model --> probability threshold
                                                        v
                                              APPROVE or DECLINE
 
-Project/demo question ---> OpenAI Responses API ---> project explanation
+Customer question ---> Gemini (or OpenAI) ---> Saarthi's answer
                            (no application data)
 ```
 
 The application conversation layer may explain the process and ask follow-up
-questions. The separate OpenAI Q&A may explain the project and its methods. It
-may not create, override or reinterpret a credit decision.
+questions. Saarthi may explain the loan and the application process. It may
+not create, override or reinterpret a credit decision.
 
 ## Workstream ownership
 

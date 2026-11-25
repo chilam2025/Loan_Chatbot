@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -24,6 +25,27 @@ from abc_credit.services.customer_assistant import CustomerAssistant
 from abc_credit.services.decision_service import DecisionService
 
 CORS_ORIGINS_ENV = "ABC_CORS_ORIGINS"
+# Only Saarthi's settings are read from the repository's .env file. Its other
+# values (database URL, /app model paths) are written for Docker Compose and
+# would break a local uvicorn run.
+DOTENV_PATH = Path(__file__).resolve().parents[4] / ".env"
+DOTENV_KEYS = ("GEMINI_API_KEY", "GEMINI_MODEL", "OPENAI_API_KEY", "OPENAI_MODEL")
+
+
+def load_assistant_settings(path: Path = DOTENV_PATH) -> None:
+    """Copy Saarthi's Gemini and OpenAI settings from .env without overriding the environment."""
+
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name, separator, value = line.partition("=")
+        name = name.strip().removeprefix("export ").strip()
+        if separator and name in DOTENV_KEYS and name not in os.environ:
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            if value:
+                os.environ[name] = value
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 
 
@@ -101,4 +123,5 @@ def create_app(
     return app
 
 
+load_assistant_settings()
 app = create_app()

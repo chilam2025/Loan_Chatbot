@@ -67,11 +67,13 @@ All routes are under `/api/v1`:
 - `GET /reference/vehicles` returns the catalogue for clients that need it
   separately; each `value` is the exact model description.
 - `GET /assistant/status` returns Saarthi's name and whether generative
-  answers (OpenAI) are enabled.
+  answers (Gemini or OpenAI) are enabled.
 - `POST /assistant/ask` answers a customer question in English or Hindi. The
   body is `{question, locale, history}`, where `history` holds up to 12 recent
-  Saarthi chat turns. Without `OPENAI_API_KEY`, or if OpenAI fails, the answer
-  comes from a built-in FAQ (`source: "faq"`). The key stays on the backend.
+  Saarthi chat turns. Gemini is used when `GEMINI_API_KEY` is set, then OpenAI
+  when `OPENAI_API_KEY` is set. With neither key, or if every provider fails,
+  the answer comes from a built-in FAQ (`source: "faq"`). Keys stay on the
+  backend.
 - `PATCH /applications/{id}/answers` saves and validates one answer.
 - `POST /applications/{id}/submit` returns the recorded model decision,
   probability, threshold, model version, and explanation. The UI displays only

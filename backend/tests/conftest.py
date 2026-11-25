@@ -13,3 +13,6 @@ FIXTURE_TABLES = Path(__file__).parent / "fixtures" / "reference_tables.json"
 os.environ.setdefault("ABC_MODEL_PROVIDER", "mock")
 os.environ.setdefault("ABC_REFERENCE_TABLES_PATH", str(FIXTURE_TABLES))
 os.environ.setdefault("ABC_LOG_LEVEL", "WARNING")
+# Never reach Gemini or OpenAI from tests, even when the developer's .env holds a key.
+os.environ["GEMINI_API_KEY"] = ""
+os.environ["OPENAI_API_KEY"] = ""

@@ -5,11 +5,13 @@ and serves the browser client through Nginx. Nginx proxies `/api/` to the API.
 
 1. Install Docker Compose and copy `.env.example` to `.env`. Change the local
    PostgreSQL password in both `POSTGRES_PASSWORD` and the password portion of
-   `ABC_DATABASE_URL`. Set `OPENAI_API_KEY` in `.env` to enable generative
-   answers from Saarthi, the customer assistant (without it Saarthi uses its
-   built-in FAQ); the key is used by the backend only. `OPENAI_MODEL`
-   defaults to `gpt-6-luna` and can be changed to a model enabled for your API
-   project. Do not commit `.env` or put the key in frontend code.
+   `ABC_DATABASE_URL`. Set `GEMINI_API_KEY` in `.env` (a free key from Google
+   AI Studio) to enable generative answers from Saarthi, the customer
+   assistant. `GEMINI_MODEL` defaults to `gemini-3.5-flash`. `OPENAI_API_KEY`
+   and `OPENAI_MODEL` are an optional backup provider. Without any key,
+   Saarthi uses its built-in FAQ. Keys are used by the backend only; a local
+   `uvicorn` run also reads these four values from `.env`. Do not commit
+   `.env` or put a key in frontend code.
 2. Place the private handoff files at
    `models/catboost_minimal_v2/decision_model.joblib`,
    `models/catboost_minimal_v2/metadata.json`, and

@@ -22,10 +22,12 @@ display the probability, threshold, model details or explanation factors.
 
 Saarthi, the customer assistant ("Ask Saarthi" button), answers free-form
 questions about two-wheeler loans in English or Hindi via the backend's
-`/assistant/ask` endpoint (OpenAI Responses API, with a built-in FAQ fallback).
+`/assistant/ask` endpoint (Google Gemini, with OpenAI as an optional backup and
+a built-in FAQ fallback).
 It receives only the typed question, locale and recent Saarthi chat turns, never
 application answers or decision data. The API key stays in the backend
-environment (`OPENAI_API_KEY`); never place it in frontend code. Saarthi does not
+environment (`GEMINI_API_KEY` or `OPENAI_API_KEY`); never place it in frontend
+code. Saarthi does not
 give personalised financial advice or make application decisions.
 
 Model files are private, local artifacts under `models/` and are ignored by
