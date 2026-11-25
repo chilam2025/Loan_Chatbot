@@ -54,9 +54,11 @@ prototype caveat. It does not show audit probability or cutoff values.
 The backend explanation adapter removes numeric SHAP contributions and hides
 `Location` by default. The frontend also uses a factor allow-list, omits unknown
 factors, and renders only localized factor labels and relative strength. It
-does not call a language model to generate or change explanations. Pincode may
-act as a proxy for community traits, so location stays hidden until the team
-explicitly agrees to show it.
+does not call a language model to generate or change application explanations.
+The separate OpenAI project Q&A receives only the user's project question and
+language, never application answers or decisions. Pincode may act as a proxy
+for community traits, so location stays hidden until the team explicitly agrees
+to show it.
 
 ## API routes used by the frontend
 
@@ -67,6 +69,10 @@ All routes are under `/api/v1`:
   answered/total counts. Vehicle choices are included in the `vehicle` question.
 - `GET /reference/vehicles` returns the catalogue for clients that need it
   separately; each `value` is the exact model description.
+- `GET /assistant/status` reports whether the OpenAI project Q&A is configured.
+- `POST /assistant/ask` answers a short project question in English or Hindi.
+  The OpenAI API key stays on the backend; do not include applicant or
+  financial information in project questions.
 - `PATCH /applications/{id}/answers` saves and validates one answer.
 - `POST /applications/{id}/verification/otp/request` and
   `POST /applications/{id}/verification/otp/confirm` run the mocked OTP flow.

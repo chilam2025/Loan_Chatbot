@@ -41,6 +41,14 @@ export function getReadiness() {
   return request("GET", "/ready", undefined, API_ROOT_URL);
 }
 
+export function getProjectAssistantStatus() {
+  return request("GET", "/assistant/status");
+}
+
+export function askProjectAssistant(question, locale) {
+  return request("POST", "/assistant/ask", { question, locale });
+}
+
 export function getApplication(applicationId) {
   return request("GET", application(applicationId));
 }

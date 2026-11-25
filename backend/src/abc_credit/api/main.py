@@ -9,13 +9,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from abc_credit import __version__
-from abc_credit.api.routers import applications, decisions, reference, system, verification
+from abc_credit.api.routers import (
+    applications,
+    decisions,
+    project_assistant,
+    reference,
+    system,
+    verification,
+)
 from abc_credit.db.config import get_database_url
 from abc_credit.db.decision_repository import SQLAlchemyDecisionRepository
 from abc_credit.db.verification_repository import SQLAlchemyVerificationRepository
 from abc_credit.integrations.model import try_load_configured_model
 from abc_credit.services.application_service import ApplicationService
 from abc_credit.services.decision_service import DecisionService
+from abc_credit.services.project_assistant import ProjectAssistant
 from abc_credit.services.verification_service import VerificationService
 
 CORS_ORIGINS_ENV = "ABC_CORS_ORIGINS"
@@ -69,6 +77,8 @@ def create_app(
         try_load_configured_model(),
         configured_application_service.reference_data,
     )
+    # OpenAI Q&A is optional and is never used by the lending decision path.
+    app.state.project_assistant = ProjectAssistant()
 
     app.add_middleware(
         CORSMiddleware,
@@ -95,6 +105,7 @@ def create_app(
     app.include_router(verification.router, prefix="/api/v1")
     app.include_router(decisions.router, prefix="/api/v1")
     app.include_router(reference.router, prefix="/api/v1")
+    app.include_router(project_assistant.router, prefix="/api/v1")
     return app
 
 

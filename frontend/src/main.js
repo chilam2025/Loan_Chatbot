@@ -2,10 +2,12 @@ import en from "./locales/en.js";
 import hi from "./locales/hi.js";
 import {
   answerQuestion,
+  askProjectAssistant,
   confirmOtp,
   getApplication,
   getDecision,
   getNextQuestion,
+  getProjectAssistantStatus,
   getReadiness,
   getVerification,
   recordIncomeDocument,
@@ -41,6 +43,9 @@ const state = {
   challenge: null,
   decision: null,
   busy: false,
+  projectAssistantEnabled: null,
+  projectAssistantModel: null,
+  projectAssistantCheckFailed: false,
 };
 const SESSION_KEY = "loan-chat-application";
 const $ = (selector) => document.querySelector(selector);
@@ -91,6 +96,17 @@ function updateChrome() {
     "genai-type": "genaiType", "genai-title": "genaiTitle", "genai-description": "genaiDescription",
   };
   for (const [id, key] of Object.entries(methodLabels)) $("#" + id).textContent = t(key);
+  $("#genai-demo-title").textContent = t("genaiDemoTitle");
+  $("#genai-demo-help").textContent = t("genaiDemoHelp");
+  $("#genai-question-label").textContent = t("genaiQuestionLabel");
+  $("#genai-question").placeholder = t("genaiQuestionPlaceholder");
+  $("#genai-ask").textContent = t("genaiAsk");
+  $("#genai-status").textContent = state.projectAssistantEnabled === true
+    ? t("genaiReady").replace("{model}", state.projectAssistantModel ?? "OpenAI")
+    : state.projectAssistantEnabled === false ? t("genaiNeedsKey")
+      : state.projectAssistantCheckFailed ? t("genaiUnavailable") : t("genaiChecking");
+  $("#genai-question").disabled = state.projectAssistantEnabled !== true;
+  $("#genai-ask").disabled = state.projectAssistantEnabled !== true;
   const percent = progressPercent();
   $("#progress-count").textContent = `${percent}%`;
   $(".progress-track").setAttribute("aria-valuenow", String(percent));
@@ -304,6 +320,38 @@ function renderDecision() {
 
 function refresh() { updateChrome(); renderForm(); }
 
+async function loadProjectAssistantStatus() {
+  try {
+    const status = await getProjectAssistantStatus();
+    state.projectAssistantEnabled = status.enabled;
+    state.projectAssistantModel = status.model;
+  } catch {
+    state.projectAssistantCheckFailed = true;
+  }
+  updateChrome();
+}
+
+$("#genai-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = $("#genai-question");
+  const output = $("#genai-response");
+  const question = input.value.trim();
+  if (!question || state.projectAssistantEnabled !== true) return;
+  input.value = "";
+  $("#genai-ask").disabled = true;
+  $("#genai-ask").textContent = t("genaiWorking");
+  output.textContent = "";
+  try {
+    const response = await askProjectAssistant(question, dictionaries[state.language].locale);
+    output.textContent = response.answer;
+  } catch (error) {
+    output.textContent = error?.status === 503 ? t("genaiNeedsKey") : t("genaiUnavailable");
+  } finally {
+    $("#genai-ask").textContent = t("genaiAsk");
+    $("#genai-ask").disabled = state.projectAssistantEnabled !== true;
+  }
+});
+
 async function withBusy(action) {
   if (state.busy) return;
   state.busy = true; renderForm();
@@ -471,11 +519,13 @@ form.addEventListener("submit", (event) => {
 $("#language").addEventListener("change", (event) => {
   state.language = event.target.value;
   try { localStorage.setItem("loan-chat-language", state.language); } catch { /* storage unavailable */ }
+  $("#genai-response").textContent = "";
   if (!state.applicationId) restart();
   else refresh();
 });
 
 updateChrome();
+void loadProjectAssistantStatus();
 const existingSession = readSession();
 if (existingSession) {
   state.step = "resuming";

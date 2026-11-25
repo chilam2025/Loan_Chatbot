@@ -18,13 +18,15 @@ frontend owns conversation presentation, accessibility, and user input capture.
 
 ## Component boundary
 
-The predictive and generative responsibilities remain deliberately separate:
+The predictive and generative responsibilities remain deliberately separate.
+The OpenAI project assistant answers questions about the project using static
+project facts; it receives no applicant answers and has no decision tools.
 
 ```text
 Applicant
    |
    v
-Conversation layer ---- validation and clarification only
+Application conversation ---- fixed prompts and validation
    |
    v
 Deterministic feature contract
@@ -36,9 +38,14 @@ Fitted preprocessing pipeline --> predictive model --> probability threshold
                                                        |
                                                        v
                                              APPROVE or DECLINE
+
+Project/demo question ---> OpenAI Responses API ---> project explanation
+                           (no application data)
 ```
 
-The conversation layer may explain the process and ask follow-up questions. It may not create, override or reinterpret the final credit decision.
+The application conversation layer may explain the process and ask follow-up
+questions. The separate OpenAI Q&A may explain the project and its methods. It
+may not create, override or reinterpret a credit decision.
 
 ## Workstream ownership
 

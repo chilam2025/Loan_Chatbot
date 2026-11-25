@@ -33,8 +33,11 @@ export default {
   resumedApplication: "Your saved application has been restored. Let’s continue.",
   retryResume: "Try again",
   brandSubtitle: "AI ASSESSMENT PROTOTYPE", assistantLabel: "Application guide", applicantLabel: "Your response",
-  aiPanelKicker: "PROJECT OVERVIEW", aiPanelTitle: "AI in this prototype", aiPanelIntro: "The components below are separate: the classifier estimates a historical outcome; the interface presents the result.",
+  aiPanelKicker: "PROJECT OVERVIEW", aiPanelTitle: "AI in this prototype", aiPanelIntro: "CatBoost estimates a historical outcome, SHAP summarizes model factors, and OpenAI answers project questions only.",
   mlType: "PREDICTIVE MACHINE LEARNING", mlTitle: "CatBoost classifier", mlDescription: "catboost-minimal-v2 uses six application inputs to estimate whether a historical application would be declined. The backend applies the configured threshold. This is not a repayment or default prediction.",
   explainType: "MODEL EXPLAINABILITY", explainTitle: "SHAP-based factors", explainDescription: "The backend summarizes selected feature contributions as factors and relative strengths. The interface hides numeric contributions and does not let explanations change the model decision.",
-  genaiType: "GENERATIVE AI", genaiTitle: "No language model connected", genaiDescription: "This build uses preset English and Hindi prompts and messages. It does not currently call an LLM or generate responses. A constrained LLM integration is still needed to demonstrate generative AI at runtime.",
+  genaiType: "GENERATIVE AI · OPENAI", genaiTitle: "Project Q&A with OpenAI", genaiDescription: "The OpenAI Responses API answers project questions using the facts above. It receives only your question and language, never application answers or loan decisions.",
+  genaiDemoTitle: "Ask about the project", genaiDemoHelp: "Your question is sent to OpenAI. Do not include names, contact details, financial information, or application answers.",
+  genaiQuestionLabel: "Your question", genaiQuestionPlaceholder: "Which model makes the loan estimate?", genaiAsk: "Ask OpenAI", genaiWorking: "Generating an answer…",
+  genaiChecking: "Checking OpenAI configuration…", genaiReady: "OpenAI assistant ready · {model}", genaiNeedsKey: "Add OPENAI_API_KEY to .env to enable project Q&A.", genaiUnavailable: "The OpenAI assistant is temporarily unavailable. Please try again.",
 };

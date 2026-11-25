@@ -45,4 +45,16 @@ body{background:#f1f4f7;color:#172536}
 .method-status .method-index{border-color:#cfd8df;color:#627285}
 .prototype-note{color:#667587}
 @media(max-width:900px){.app-shell{padding:0 24px}.application{margin-top:30px}.application-grid{grid-template-columns:minmax(0,1fr) 290px;gap:14px}.ai-methods{padding:17px 15px 7px}}
-@media(max-width:700px){.app-shell{padding:0 17px}.application{margin:28px auto 36px}.application-grid{grid-template-columns:1fr}.ai-methods{order:2}.messages{max-height:38vh;padding:18px 16px 12px}.response-form{padding:17px 16px 19px}.intro h1{font-size:28px}}
+@media(max-width:700px){.app-shell{padding:0 17px}.application{margin:28px auto 36px}.application-grid{grid-template-columns:1fr}.ai-methods{order:2}.messages{max-height:38vh;padding:18px 16px 12px}.response-form{padding:17px 16px 19px}.intro h1{font-size:28px}}.genai-demo{margin-top:15px;padding-top:15px;border-top:1px solid #e2e8ed}
+.genai-demo h3{margin:0 0 6px;color:#203248;font-size:14px}
+.genai-demo-help{margin:0 0 8px;color:#586a7c;font-size:11px;line-height:1.5}
+.genai-status{margin:0 0 9px;color:#286d59;font-size:11px;font-weight:600;line-height:1.4}
+#genai-form{display:grid;gap:8px}
+#genai-question-label{color:#33475b;font-size:11px;font-weight:600}
+#genai-question{width:100%;min-height:74px;resize:vertical;border:1px solid #c7d1dc;border-radius:7px;padding:9px 10px;color:#203248;background:#fff;font:inherit;font-size:12px;line-height:1.45}
+#genai-question:focus{outline:3px solid var(--focus);outline-offset:2px}
+#genai-question:disabled{background:#f4f6f8;color:#778494}
+#genai-ask{justify-self:start;min-height:38px}
+#genai-ask:disabled{opacity:.55;cursor:not-allowed}
+.genai-response{margin:10px 0 0;padding:10px;border-left:3px solid #176b52;border-radius:0 5px 5px 0;background:#f3f7f5;color:#25394b;font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.genai-response:empty{display:none}

@@ -44,6 +44,17 @@
             <span class="method-index">03</span>
             <div><p class="method-type" id="genai-type"></p><h3 id="genai-title"></h3><p id="genai-description"></p></div>
           </article>
+          <section class="genai-demo" aria-labelledby="genai-demo-title">
+            <h3 id="genai-demo-title">Ask about the project</h3>
+            <p id="genai-demo-help" class="genai-demo-help"></p>
+            <p id="genai-status" class="genai-status" role="status" aria-live="polite"></p>
+            <form id="genai-form">
+              <label for="genai-question" id="genai-question-label"></label>
+              <textarea id="genai-question" maxlength="500" rows="3" required></textarea>
+              <button id="genai-ask" class="primary-button" type="submit"></button>
+            </form>
+            <p id="genai-response" class="genai-response" role="status" aria-live="polite"></p>
+          </section>
         </aside>
         </div>
         <p class="prototype-note" id="prototype-note">Academic prototype. Verification steps shown here are simulations.</p>

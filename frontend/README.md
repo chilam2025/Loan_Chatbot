@@ -24,6 +24,14 @@ probability, threshold, or numeric explanation contributions. Location is
 hidden from explanations because pincode can proxy sensitive community traits.
 The interface shows only allow-listed factor labels and relative strengths.
 
+The project-information assistant uses OpenAI's Responses API to answer
+questions about the prototype in English or Hindi. It receives only the typed
+project question and locale, never application answers or decision data. The
+API key stays in the backend environment (`OPENAI_API_KEY`); never place it in
+frontend code. Configure it in `.env` to enable Q&A. Users are told not to send
+personal or financial information. This assistant does not provide lending
+advice or make application decisions.
+
 Model files are private, local artifacts under `models/` and are ignored by
 Git. The API loads the configured model once at startup; if it or the reference
 tables are missing, decision requests return `503` while the rest of the API
